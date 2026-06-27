@@ -1,7 +1,13 @@
+# Core pipeline
 faster-whisper>=1.0.0
 ollama>=0.3.0
 tqdm>=4.66
-openai>=1.0.0   # For xAI Grok
-whisperx
-pydub
-# Optional: whisperx, pydub, etc. for advanced diarization
+openai>=1.0.0          # xAI Grok API (OpenAI-compatible)
+scipy>=1.10.0          # Audio resampling for mlx-whisper loader
+
+# Apple Silicon transcription (recommended on M1/M2/M3)
+mlx-whisper>=0.4.0
+
+# Optional: speaker diarization (requires HF_TOKEN + pyannote model license)
+# pip install pyannote.audio torch
+# pyannote.audio>=3.1.0
