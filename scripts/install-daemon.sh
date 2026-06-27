@@ -2,7 +2,11 @@
 # Install IdeaForge as a macOS LaunchAgent (runs at login, watches for USB recorder)
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/common.sh"
+
+ROOT="$(ideaforge_project_root)"
 LABEL="com.ideaforge.daemon"
 PLIST_DIR="$HOME/Library/LaunchAgents"
 PLIST_PATH="$PLIST_DIR/$LABEL.plist"
@@ -16,13 +20,14 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
 fi
 
 if [[ ! -x "$RUN_SCRIPT" ]]; then
-  chmod +x "$RUN_SCRIPT"
+  chmod +x "$RUN_SCRIPT" "$SCRIPT_DIR/common.sh"
 fi
 
-IDEAFORGE_BIN="$(command -v ideaforge || true)"
+ensure_ideaforge_venv "$ROOT"
+
+IDEAFORGE_BIN="$(resolve_ideaforge_bin "$ROOT")"
 if [[ -z "$IDEAFORGE_BIN" ]]; then
-  echo "ideaforge not found in PATH. Install the package first:" >&2
-  echo "  cd \"$ROOT\" && pip install -e '.[all]'" >&2
+  echo "ideaforge not found after venv setup." >&2
   exit 1
 fi
 
@@ -69,9 +74,10 @@ launchctl kickstart -k "$DOMAIN/$LABEL"
 echo "Installed IdeaForge daemon:"
 echo "  Plist:  $PLIST_PATH"
 echo "  Logs:   $LOG_DIR/daemon.log"
+echo "  Venv:   $ROOT/venv"
 echo "  Binary: $IDEAFORGE_BIN"
 echo ""
-echo "The daemon watches /Volumes and runs the full pipeline when your recorder is plugged in."
+echo "No need to activate the venv manually — the daemon uses the project venv above."
 echo ""
 echo "Commands:"
 echo "  tail -f \"$LOG_DIR/daemon.log\"     # watch activity"

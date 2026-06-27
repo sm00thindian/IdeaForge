@@ -158,7 +158,7 @@ Z28/Z29 devices mount as exFAT volumes (often `NO NAME` on macOS):
 **Daemon (set and forget):**
 
 ```bash
-./scripts/install-daemon.sh          # first time only
+./scripts/install-daemon.sh          # creates venv if needed, no manual activate
 tail -f ~/Library/Logs/ideaforge/daemon.log
 ```
 
@@ -179,7 +179,7 @@ ideaforge --auto-source --list-only   # preview files without processing
 The daemon watches `/Volumes` and runs the full pipeline when exactly one recorder is detected.
 
 ```bash
-# Install as macOS LaunchAgent (starts at login, restarts on crash)
+# Install as macOS LaunchAgent (creates project venv + pip install if needed)
 ./scripts/install-daemon.sh
 
 # Foreground (good for debugging)
@@ -473,8 +473,9 @@ ideaforge/
 └── config.py       # TOML + .env loading
 
 scripts/
+├── common.sh            # Venv setup + binary resolution
 ├── install-daemon.sh    # macOS LaunchAgent installer
-├── run-daemon.sh        # Daemon wrapper (loads .env)
+├── run-daemon.sh        # Daemon wrapper (loads .env, uses project venv)
 ├── stop-daemon.sh       # Stop daemon without uninstalling
 └── uninstall-daemon.sh
 ```

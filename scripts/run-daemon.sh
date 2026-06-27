@@ -2,7 +2,11 @@
 # Wrapper for launchd — loads .env then runs ideaforge --daemon
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/common.sh"
+
+ROOT="$(ideaforge_project_root)"
 cd "$ROOT"
 
 for env_file in "$ROOT/.env" "$HOME/.config/ideaforge/.env"; do
@@ -15,21 +19,9 @@ for env_file in "$ROOT/.env" "$HOME/.config/ideaforge/.env"; do
   fi
 done
 
-IDEAFORGE_BIN=""
-for candidate in \
-  "${IDEAFORGE_BIN_OVERRIDE:-}" \
-  "$(command -v ideaforge 2>/dev/null || true)" \
-  "$ROOT/venv/bin/ideaforge" \
-  "$HOME/.local/bin/ideaforge" \
-  "/opt/homebrew/bin/ideaforge"; do
-  if [[ -n "$candidate" && -x "$candidate" ]]; then
-    IDEAFORGE_BIN="$candidate"
-    break
-  fi
-done
-
+IDEAFORGE_BIN="$(resolve_ideaforge_bin "$ROOT" || true)"
 if [[ -z "$IDEAFORGE_BIN" ]]; then
-  echo "ideaforge not found in PATH or $ROOT/venv/bin" >&2
+  echo "ideaforge not found. Run ./scripts/install-daemon.sh to set up the venv." >&2
   exit 127
 fi
 
