@@ -206,6 +206,7 @@ def process_source(
                 backend=cfg.llm_backend,
                 ollama_model=cfg.ollama_model,
                 grok_model=cfg.grok_model,
+                claude_model=cfg.claude_model,
                 output_format=cfg.output_format,
                 force=force,
             )

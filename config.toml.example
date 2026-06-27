@@ -4,9 +4,10 @@
 archive = "~/IdeaForge"
 
 [llm]
-backend = "auto"         # auto | ollama | grok  (auto uses Grok when XAI_API_KEY is set)
+backend = "auto"         # auto | ollama | grok | claude  (auto prefers Grok)
 ollama_model = "llama3.1"
 grok_model = "grok-4.3"   # grok-4-1-fast-reasoning for faster/cheaper
+claude_model = "claude-sonnet-4-20250514"
 
 [whisper]
 backend = "auto"         # auto | mlx | faster  (auto uses mlx on Apple Silicon)

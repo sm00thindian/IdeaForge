@@ -101,9 +101,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-speakers", type=int, default=None, help="pyannote min speakers")
     parser.add_argument("--max-speakers", type=int, default=None, help="pyannote max speakers")
 
-    parser.add_argument("--llm-backend", default=None, choices=["auto", "ollama", "grok"])
+    parser.add_argument(
+        "--llm-backend",
+        default=None,
+        choices=["auto", "ollama", "grok", "claude"],
+    )
     parser.add_argument("--ollama-model", default=None)
     parser.add_argument("--grok-model", default=None)
+    parser.add_argument("--claude-model", default=None)
     parser.add_argument("--mode", default=None, choices=["meeting", "creative", "auto"])
     parser.add_argument("--output-format", default=None, choices=["md", "json", "both"])
 
@@ -143,6 +148,8 @@ def resolve_config(args: argparse.Namespace) -> IdeaForgeConfig:
         cfg.ollama_model = args.ollama_model
     if args.grok_model:
         cfg.grok_model = args.grok_model
+    if args.claude_model:
+        cfg.claude_model = args.claude_model
     if args.mode:
         cfg.mode = args.mode
     if args.output_format:

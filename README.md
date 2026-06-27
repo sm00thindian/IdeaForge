@@ -51,7 +51,7 @@ USB recorder plugged in
 | **Purge** | Daemon removes recordings from device after hash-verified local copy |
 | **Transcribe** | mlx-whisper on Apple Silicon (auto), faster-whisper fallback elsewhere |
 | **Diarize** | pyannote speaker labels — runs on existing transcript, no re-transcription |
-| **Summarize** | Grok (auto when `XAI_API_KEY` set) or Ollama — structured JSON + Markdown |
+| **Summarize** | Grok (auto default), Claude, or Ollama — structured JSON + Markdown |
 | **Speakers** | Grok infers real names/roles from conversation; no manual mapping required |
 
 ### Processing modes
@@ -84,7 +84,8 @@ pip install mlx-whisper pyannote.audio torch   # Apple Silicon + diarization
 Create a `.env` file in the project root (or set environment variables):
 
 ```bash
-XAI_API_KEY=xai-...          # Grok meeting notes (recommended)
+XAI_API_KEY=xai-...            # Grok meeting notes (default when backend=auto)
+ANTHROPIC_API_KEY=sk-ant-...   # Claude (optional — set backend=claude)
 HF_TOKEN=hf_...                # pyannote diarization (requires HuggingFace license)
 ```
 
@@ -252,8 +253,9 @@ Transcription:
   --max-speakers      pyannote hint (e.g. 6)
 
 LLM:
-  --llm-backend       auto | ollama | grok
+  --llm-backend       auto | ollama | grok | claude
   --grok-model        Default: grok-4.3
+  --claude-model      Default: claude-sonnet-4-20250514
   --mode              meeting | creative | auto
   --output-format     md | json | both
 
@@ -318,11 +320,34 @@ After processing `R2026-06-27-07-43-11.WAV`:
 
 ## LLM backends
 
-**Auto (default)** — uses Grok when `XAI_API_KEY` is set; otherwise Ollama:
+| Backend | When to use | API key |
+|---------|-------------|---------|
+| **`auto`** (default) | Grok when `XAI_API_KEY` is set; otherwise Ollama | `XAI_API_KEY` |
+| **`grok`** | Best meeting notes — speaker inference, action items | `XAI_API_KEY` |
+| **`claude`** | Anthropic Claude — same structured output, no xAI account | `ANTHROPIC_API_KEY` |
+| **`ollama`** | Fully local, no API keys | — |
+
+**Auto (default) — Grok preferred:**
 
 ```bash
 export XAI_API_KEY="your-key"
 ideaforge --auto-source
+```
+
+**Claude (opt-in):**
+
+```bash
+pip install anthropic   # or: pip install -e ".[claude]"
+export ANTHROPIC_API_KEY="your-key"
+ideaforge --auto-source --llm-backend claude
+```
+
+Or in `config.toml`:
+
+```toml
+[llm]
+backend = "claude"
+claude_model = "claude-sonnet-4-20250514"
 ```
 
 **Ollama only (fully local):**
@@ -332,7 +357,7 @@ ollama pull llama3.1
 ideaforge --auto-source --llm-backend ollama
 ```
 
-Grok is recommended for meeting notes. If a Grok call fails, IdeaForge automatically retries with Ollama.
+Grok and Claude fall back to Ollama automatically if the API call fails.
 
 ## Transcription
 
@@ -392,7 +417,7 @@ scripts/
 ## Privacy
 
 - **Local by default** — audio and transcripts stay on your machine
-- **Grok is opt-in** — only used when `XAI_API_KEY` is set (auto backend picks it up)
+- **Cloud LLMs are opt-in** — Grok (auto default) needs `XAI_API_KEY`; Claude needs `ANTHROPIC_API_KEY` and `backend = "claude"`
 - **No telemetry** — no analytics, no cloud storage
 - **Dedup log** — `~/IdeaForge/.processed_log.json` tracks file hashes locally
 

@@ -66,12 +66,18 @@ def has_xai_api_key() -> bool:
     return bool(key and key.strip())
 
 
+def has_anthropic_api_key() -> bool:
+    key = os.getenv("ANTHROPIC_API_KEY", "")
+    return bool(key and key.strip())
+
+
 @dataclass
 class IdeaForgeConfig:
     archive: Path = field(default_factory=lambda: Path.home() / "IdeaForge")
-    llm_backend: str = "auto"  # auto | ollama | grok
+    llm_backend: str = "auto"  # auto | ollama | grok | claude
     ollama_model: str = "llama3.1"
     grok_model: str = "grok-4.3"
+    claude_model: str = "claude-sonnet-4-20250514"
     whisper_backend: str = "auto"  # auto | mlx | faster
     whisper_model: str = "small"
     whisper_device: str = "cpu"
@@ -109,6 +115,7 @@ class IdeaForgeConfig:
             cfg.llm_backend = llm.get("backend", cfg.llm_backend)
             cfg.ollama_model = llm.get("ollama_model", cfg.ollama_model)
             cfg.grok_model = llm.get("grok_model", cfg.grok_model)
+            cfg.claude_model = llm.get("claude_model", cfg.claude_model)
         if "whisper" in data:
             w = data["whisper"]
             cfg.whisper_backend = w.get("backend", cfg.whisper_backend)
@@ -168,6 +175,10 @@ class IdeaForgeConfig:
 
         if backend == "grok" and not has_xai_api_key():
             print("    ⚠️  XAI_API_KEY not set — falling back to Ollama")
+            return "ollama"
+
+        if backend == "claude" and not has_anthropic_api_key():
+            print("    ⚠️  ANTHROPIC_API_KEY not set — falling back to Ollama")
             return "ollama"
 
         return backend

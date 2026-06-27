@@ -3,6 +3,7 @@ faster-whisper>=1.0.0
 ollama>=0.3.0
 tqdm>=4.66
 openai>=1.0.0          # xAI Grok API (OpenAI-compatible)
+# anthropic>=0.40.0    # optional: Claude backend (pip install anthropic)
 scipy>=1.10.0          # Audio resampling for mlx-whisper loader
 
 # Apple Silicon transcription (recommended on M1/M2/M3)

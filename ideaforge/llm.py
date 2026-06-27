@@ -6,9 +6,9 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
-from ideaforge.config import has_xai_api_key
+from ideaforge.config import has_anthropic_api_key, has_xai_api_key
 from ideaforge.prompts import Mode, build_prompt
 from ideaforge.schema import (
     ActionItem,
@@ -31,6 +31,11 @@ try:
 except ImportError:
     openai = None  # type: ignore
 
+try:
+    import anthropic
+except ImportError:
+    anthropic = None  # type: ignore
+
 
 def process_transcript(
     transcript_path: Path,
@@ -39,6 +44,7 @@ def process_transcript(
     backend: str = "auto",
     ollama_model: str = "llama3.1",
     grok_model: str = "grok-4.3",
+    claude_model: str = "claude-sonnet-4-20250514",
     output_format: str = "both",
     force: bool = False,
 ) -> Optional[Path]:
@@ -66,17 +72,36 @@ def process_transcript(
     resolved_backend = _resolve_backend(backend)
     system_prompt, user_prompt = build_prompt(mode, transcript)
 
-    raw: Optional[str] = None
+    models = {
+        "ollama": ollama_model,
+        "grok": grok_model,
+        "claude": claude_model,
+    }
     used_backend = resolved_backend
-    used_model = grok_model if resolved_backend == "grok" else ollama_model
+    used_model = models.get(resolved_backend, ollama_model)
 
     try:
-        raw = _call_llm(resolved_backend, system_prompt, user_prompt, ollama_model, grok_model)
+        raw = _call_llm(
+            resolved_backend,
+            system_prompt,
+            user_prompt,
+            ollama_model=ollama_model,
+            grok_model=grok_model,
+            claude_model=claude_model,
+        )
     except Exception as exc:
-        if resolved_backend == "grok" and _ollama_available():
-            print(f"    ⚠️  Grok failed ({exc}) — retrying with Ollama")
+        if resolved_backend in ("grok", "claude") and _ollama_available():
+            label = "Grok" if resolved_backend == "grok" else "Claude"
+            print(f"    ⚠️  {label} failed ({exc}) — retrying with Ollama")
             try:
-                raw = _call_llm("ollama", system_prompt, user_prompt, ollama_model, grok_model)
+                raw = _call_llm(
+                    "ollama",
+                    system_prompt,
+                    user_prompt,
+                    ollama_model=ollama_model,
+                    grok_model=grok_model,
+                    claude_model=claude_model,
+                )
                 used_backend = "ollama"
                 used_model = ollama_model
             except Exception as fallback_exc:
@@ -112,6 +137,9 @@ def _resolve_backend(backend: str) -> str:
     if backend == "grok" and not has_xai_api_key():
         print("    ⚠️  XAI_API_KEY not set — falling back to Ollama")
         return "ollama"
+    if backend == "claude" and not has_anthropic_api_key():
+        print("    ⚠️  ANTHROPIC_API_KEY not set — falling back to Ollama")
+        return "ollama"
     return backend
 
 
@@ -123,27 +151,60 @@ def _call_llm(
     backend: str,
     system_prompt: str,
     user_prompt: str,
+    *,
     ollama_model: str,
     grok_model: str,
+    claude_model: str,
 ) -> str:
     if backend == "grok":
-        if openai is None:
-            raise RuntimeError("openai package not installed. Run: pip install openai")
-        api_key = os.getenv("XAI_API_KEY")
-        if not api_key:
-            raise RuntimeError("XAI_API_KEY environment variable not set")
-        client = openai.OpenAI(api_key=api_key, base_url="https://api.x.ai/v1")
-        print(f"    🤖 xAI Grok ({grok_model}) — smart meeting analysis")
-        response = client.chat.completions.create(
-            model=grok_model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.2,
-        )
-        return response.choices[0].message.content or ""
+        return _call_grok(system_prompt, user_prompt, grok_model)
+    if backend == "claude":
+        return _call_claude(system_prompt, user_prompt, claude_model)
+    return _call_ollama(system_prompt, user_prompt, ollama_model)
 
+
+def _call_grok(system_prompt: str, user_prompt: str, grok_model: str) -> str:
+    if openai is None:
+        raise RuntimeError("openai package not installed. Run: pip install openai")
+    api_key = os.getenv("XAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("XAI_API_KEY environment variable not set")
+    client = openai.OpenAI(api_key=api_key, base_url="https://api.x.ai/v1")
+    print(f"    🤖 xAI Grok ({grok_model}) — smart meeting analysis")
+    response = client.chat.completions.create(
+        model=grok_model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        temperature=0.2,
+    )
+    return response.choices[0].message.content or ""
+
+
+def _call_claude(system_prompt: str, user_prompt: str, claude_model: str) -> str:
+    if anthropic is None:
+        raise RuntimeError("anthropic package not installed. Run: pip install anthropic")
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise RuntimeError("ANTHROPIC_API_KEY environment variable not set")
+    client = anthropic.Anthropic(api_key=api_key)
+    print(f"    🤖 Anthropic Claude ({claude_model}) — smart meeting analysis")
+    response = client.messages.create(
+        model=claude_model,
+        max_tokens=8192,
+        system=system_prompt,
+        messages=[{"role": "user", "content": user_prompt}],
+        temperature=0.2,
+    )
+    parts = []
+    for block in response.content:
+        if block.type == "text":
+            parts.append(block.text)
+    return "".join(parts)
+
+
+def _call_ollama(system_prompt: str, user_prompt: str, ollama_model: str) -> str:
     if ollama is None:
         raise RuntimeError("ollama package not installed. Run: pip install ollama")
     print(f"    🤖 Ollama ({ollama_model})")
