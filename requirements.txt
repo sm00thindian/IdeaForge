@@ -1,0 +1,7 @@
+faster-whisper>=1.0.0
+ollama>=0.3.0
+tqdm>=4.66
+openai>=1.0.0   # For xAI Grok
+whisperx
+pydub
+# Optional: whisperx, pydub, etc. for advanced diarization
