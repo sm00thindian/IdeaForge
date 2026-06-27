@@ -2,7 +2,7 @@
 
 **Plug in your recorder. Get meeting notes.**
 
-IdeaForge is a local-first pipeline for USB voice recorders (Z28/Z29 and similar). It copies recordings off the device, transcribes them on your Mac, optionally labels who said what, and produces structured meeting notes with action items — powered by Grok or local Ollama.
+IdeaForge is a local-first pipeline for USB voice recorders (Z28/Z29 and similar). It copies recordings off the device, transcribes them on your Mac, optionally labels who said what, and produces structured meeting notes with action items — powered by **Grok** (default), **Claude** (opt-in), or **Ollama** (fully local).
 
 ## How it works
 
@@ -29,7 +29,7 @@ USB recorder plugged in
 └─────────┬─────────┘
           ▼
 ┌───────────────────┐
-│  Summarize        │  Grok infers names, action items, decisions
+│  Summarize        │  LLM infers names, action items, decisions
 └─────────┬─────────┘
           ▼
    summary.md + summary.json
@@ -42,6 +42,16 @@ USB recorder plugged in
 | **Daemon** (recommended) | `./scripts/install-daemon.sh` | Hands-off — plug in and walk away |
 | **Manual** | `ideaforge --auto-source` | One-off runs, testing, re-processing |
 
+## Choose your LLM
+
+| Backend | Config | API key | Notes |
+|---------|--------|---------|-------|
+| **Grok** | `backend = "auto"` or `"grok"` | `XAI_API_KEY` | **Default** — auto-selected when key is set |
+| **Claude** | `backend = "claude"` | `ANTHROPIC_API_KEY` | Opt-in — same prompts and JSON output |
+| **Ollama** | `backend = "ollama"` | — | Fully local fallback |
+
+`auto` prefers Grok when `XAI_API_KEY` is present; otherwise Ollama. Claude is never auto-selected — set it explicitly.
+
 ## Features
 
 | Stage | What it does |
@@ -51,8 +61,8 @@ USB recorder plugged in
 | **Purge** | Daemon removes recordings from device after hash-verified local copy |
 | **Transcribe** | mlx-whisper on Apple Silicon (auto), faster-whisper fallback elsewhere |
 | **Diarize** | pyannote speaker labels — runs on existing transcript, no re-transcription |
-| **Summarize** | Grok (auto default), Claude, or Ollama — structured JSON + Markdown |
-| **Speakers** | Grok infers real names/roles from conversation; no manual mapping required |
+| **Summarize** | Grok, Claude, or Ollama — structured JSON + Markdown meeting notes |
+| **Speakers** | LLM infers real names/roles from conversation; no manual mapping required |
 
 ### Processing modes
 
@@ -72,24 +82,27 @@ source venv/bin/activate
 pip install -e ".[all]"
 ```
 
-Or with `requirements.txt` for a minimal install:
+Minimal install:
 
 ```bash
 pip install -r requirements.txt
-pip install mlx-whisper pyannote.audio torch   # Apple Silicon + diarization
+pip install mlx-whisper scipy          # Apple Silicon transcription
+pip install pyannote.audio torch       # speaker diarization
+pip install anthropic                  # only if using Claude backend
 ```
 
 ### 2. Secrets
 
-Create a `.env` file in the project root (or set environment variables):
+Create a `.env` file in the project root (daemon and CLI load it automatically):
 
 ```bash
-XAI_API_KEY=xai-...            # Grok meeting notes (default when backend=auto)
-ANTHROPIC_API_KEY=sk-ant-...   # Claude (optional — set backend=claude)
-HF_TOKEN=hf_...                # pyannote diarization (requires HuggingFace license)
+# Pick one or both — Grok is used by default when XAI_API_KEY is set
+XAI_API_KEY=xai-...              # Grok (default with backend=auto)
+ANTHROPIC_API_KEY=sk-ant-...     # Claude (requires backend=claude)
+HF_TOKEN=hf_...                  # pyannote diarization
 ```
 
-Accept the pyannote model license at [speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1) before using diarization.
+Accept the pyannote license at [speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1) before using diarization.
 
 ### 3. Configure
 
@@ -98,11 +111,17 @@ mkdir -p ~/.config/ideaforge
 cp config.toml.example ~/.config/ideaforge/config.toml
 ```
 
-Key settings:
+Example for a full hands-off setup (Grok + diarization + daemon purge):
 
 ```toml
+archive = "~/IdeaForge"
+
+[llm]
+backend = "auto"          # Grok when XAI_API_KEY is set
+grok_model = "grok-4.3"
+
 [processing]
-diarize = true              # enable speaker labels in full pipeline
+diarize = true
 
 [diarization]
 min_speakers = 2
@@ -110,8 +129,16 @@ max_speakers = 6
 
 [daemon]
 poll_interval_seconds = 5
-settle_seconds = 5          # wait after USB mount before reading files
-delete_after_copy = true    # remove recordings from device after verified copy
+settle_seconds = 5
+delete_after_copy = true  # remove from device after verified copy
+```
+
+For Claude instead of Grok:
+
+```toml
+[llm]
+backend = "claude"
+claude_model = "claude-sonnet-4-20250514"
 ```
 
 ### 4. Your recorder
@@ -130,11 +157,13 @@ Z28/Z29 devices mount as exFAT volumes (often `NO NAME` on macOS):
 **Daemon (set and forget):**
 
 ```bash
-./scripts/install-daemon.sh
+./scripts/install-daemon.sh          # first time only
 tail -f ~/Library/Logs/ideaforge/daemon.log
 ```
 
 Plug in the recorder — IdeaForge copies, transcribes, diarizes, summarizes, and clears the device.
+
+> **Note:** Run `./scripts/install-daemon.sh` before `launchctl kickstart`. The LaunchAgent must be installed first.
 
 **Manual (one-shot):**
 
@@ -170,7 +199,7 @@ tail -f ~/Library/Logs/ideaforge/daemon.log
 1. Device detected → wait `settle_seconds` for mount to stabilize
 2. Copy new recordings to `~/IdeaForge/YYYY-MM-DD/`
 3. Hash-verify archive copy → delete from device (if `delete_after_copy = true`)
-4. Transcribe → diarize → Grok meeting notes
+4. Transcribe → diarize → LLM meeting notes (Grok by default)
 5. Skip files already in `.processed_log.json` (SHA-256 dedup)
 
 Manual `ideaforge --auto-source` runs do **not** delete device files — only the daemon does.
@@ -179,7 +208,7 @@ Manual `ideaforge --auto-source` runs do **not** delete device files — only th
 
 Transcripts use pyannote labels: `[SPEAKER_00]`, `[SPEAKER_01]`, etc.
 
-Grok analyzes the conversation and infers who each speaker is — from self-introductions, direct address, and context. Results appear in meeting notes as:
+The LLM (Grok or Claude) analyzes the conversation and infers who each speaker is — from self-introductions, direct address, and context. Results appear in meeting notes as:
 
 ```json
 "speaker_identities": [
@@ -204,7 +233,7 @@ Run the full pipeline or individual stages:
 # Full pipeline (default)
 ideaforge --auto-source
 
-# Re-run Grok only (~10 seconds)
+# Re-run LLM only (~10 seconds)
 ideaforge --source ~/IdeaForge/2026-06-27 --llm-only --force
 
 # Diarize without re-transcribing (~25 min CPU; uses cached _turns.json on re-run)
@@ -256,6 +285,7 @@ LLM:
   --llm-backend       auto | ollama | grok | claude
   --grok-model        Default: grok-4.3
   --claude-model      Default: claude-sonnet-4-20250514
+  --ollama-model      Default: llama3.1
   --mode              meeting | creative | auto
   --output-format     md | json | both
 
@@ -320,37 +350,30 @@ After processing `R2026-06-27-07-43-11.WAV`:
 
 ## LLM backends
 
-| Backend | When to use | API key |
-|---------|-------------|---------|
-| **`auto`** (default) | Grok when `XAI_API_KEY` is set; otherwise Ollama | `XAI_API_KEY` |
-| **`grok`** | Best meeting notes — speaker inference, action items | `XAI_API_KEY` |
-| **`claude`** | Anthropic Claude — same structured output, no xAI account | `ANTHROPIC_API_KEY` |
-| **`ollama`** | Fully local, no API keys | — |
-
-**Auto (default) — Grok preferred:**
+### Grok (default)
 
 ```bash
 export XAI_API_KEY="your-key"
-ideaforge --auto-source
+ideaforge --auto-source                    # auto picks Grok
+ideaforge --auto-source --llm-backend grok # explicit
 ```
 
-**Claude (opt-in):**
+### Claude (opt-in)
 
 ```bash
-pip install anthropic   # or: pip install -e ".[claude]"
+pip install anthropic                      # or: pip install -e ".[claude]"
 export ANTHROPIC_API_KEY="your-key"
 ideaforge --auto-source --llm-backend claude
 ```
 
-Or in `config.toml`:
-
 ```toml
+# ~/.config/ideaforge/config.toml
 [llm]
 backend = "claude"
 claude_model = "claude-sonnet-4-20250514"
 ```
 
-**Ollama only (fully local):**
+### Ollama (fully local)
 
 ```bash
 ollama pull llama3.1
@@ -403,7 +426,7 @@ ideaforge/
 ├── diarize.py      # pyannote speaker labeling
 ├── speakers.py     # Speaker map formatting
 ├── audio_util.py   # ffmpeg-free audio loader
-├── llm.py          # Grok / Ollama backends
+├── llm.py          # Grok / Claude / Ollama backends
 ├── prompts.py      # Meeting and creative prompts
 ├── schema.py       # MeetingNotes, SpeakerIdentity, etc.
 └── config.py       # TOML + .env loading
