@@ -92,6 +92,11 @@ class IdeaForgeConfig:
     daemon_poll_interval: float = 5.0
     daemon_settle_seconds: float = 5.0
     daemon_delete_after_copy: bool = True
+    export_reminders: bool = False
+    export_reminders_list: str = "IdeaForge"
+    export_obsidian: bool = False
+    export_obsidian_vault: Optional[Path] = None
+    export_obsidian_note: str = "IdeaForge/Action Items.md"
     min_file_size_bytes: int = 50_000
     hf_token: Optional[str] = None
     audio_extensions: List[str] = field(
@@ -152,7 +157,27 @@ class IdeaForgeConfig:
             )
             if "delete_after_copy" in daemon:
                 cfg.daemon_delete_after_copy = bool(daemon["delete_after_copy"])
+        if "export" in data:
+            export = data["export"]
+            cfg.export_reminders = bool(export.get("reminders", cfg.export_reminders))
+            cfg.export_reminders_list = export.get("reminders_list", cfg.export_reminders_list)
+            cfg.export_obsidian = bool(export.get("obsidian", cfg.export_obsidian))
+            if "obsidian_vault" in export:
+                cfg.export_obsidian_vault = Path(export["obsidian_vault"]).expanduser()
+            cfg.export_obsidian_note = export.get("obsidian_note", cfg.export_obsidian_note)
         return cfg
+
+    def export_settings(self, *, force: bool = False) -> "ExportSettings":
+        from ideaforge.export import ExportSettings
+
+        return ExportSettings(
+            reminders=self.export_reminders,
+            reminders_list=self.export_reminders_list,
+            obsidian=self.export_obsidian,
+            obsidian_vault=self.export_obsidian_vault,
+            obsidian_note=self.export_obsidian_note,
+            force=force,
+        )
 
     def resolve_secrets(self) -> None:
         """Fill HF token from environment if not set in config."""

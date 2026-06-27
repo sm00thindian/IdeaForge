@@ -124,6 +124,7 @@ class RecorderWatcher:
             self.stages,
             force=self.force,
             delete_from_device=self.cfg.daemon_delete_after_copy,
+            export_settings=self.cfg.export_settings(force=self.force),
         )
         refreshed = find_recorder_mounts()
         if len(refreshed) == 1:

@@ -112,7 +112,37 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--mode", default=None, choices=["meeting", "creative", "auto"])
     parser.add_argument("--output-format", default=None, choices=["md", "json", "both"])
 
+    parser.add_argument(
+        "--export-only",
+        action="store_true",
+        help="Export action items from existing *_summary.json files (requires --source)",
+    )
+    parser.add_argument(
+        "--export-reminders",
+        action="store_true",
+        help="Export action items to Apple Reminders (macOS)",
+    )
+    parser.add_argument(
+        "--export-obsidian",
+        action="store_true",
+        help="Append action items to an Obsidian note",
+    )
+    parser.add_argument("--no-export", action="store_true", help="Skip action item export")
+
     return parser
+
+
+def resolve_export_settings(cfg: IdeaForgeConfig, args: argparse.Namespace):
+    from ideaforge.export import ExportSettings
+
+    settings = cfg.export_settings(force=args.force)
+    if args.no_export:
+        return ExportSettings()
+    if args.export_reminders:
+        settings.reminders = True
+    if args.export_obsidian:
+        settings.obsidian = True
+    return settings
 
 
 def resolve_config(args: argparse.Namespace) -> IdeaForgeConfig:
@@ -205,12 +235,29 @@ def main(argv: Optional[list] = None) -> int:
             settle_seconds=args.daemon_settle,
         )
 
+    archive = cfg.archive.expanduser().resolve()
+
+    if args.export_only:
+        if not args.source:
+            parser.error("--export-only requires --source pointing to a folder with summaries")
+        from ideaforge.export import export_summaries_in_folder
+
+        source = args.source.expanduser().resolve()
+        if not source.is_dir():
+            print(f"❌ Source not found: {source}")
+            return 1
+        settings = resolve_export_settings(cfg, args)
+        if not settings.reminders and not settings.obsidian:
+            print("❌ Enable export in config.toml [export] or use --export-reminders / --export-obsidian")
+            return 1
+        count = export_summaries_in_folder(source, archive, settings)
+        print(f"\n✅ Export complete — {count} action item(s) exported")
+        return 0
+
     stages = resolve_stages(args, cfg)
     source = resolve_source(args)
     if source is None:
         parser.error("One of --source, --auto-source, or --daemon is required (unless using --detect)")
-
-    archive = cfg.archive.expanduser().resolve()
 
     if not source.exists() or not source.is_dir():
         print(f"❌ Source not found: {source}")
@@ -231,6 +278,7 @@ def main(argv: Optional[list] = None) -> int:
         cfg,
         stages,
         force=args.force,
+        export_settings=resolve_export_settings(cfg, args),
     )
     return 0
 

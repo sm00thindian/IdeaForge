@@ -98,6 +98,7 @@ def process_source(
     *,
     force: bool = False,
     delete_from_device: bool = False,
+    export_settings=None,
     show_header: bool = True,
     show_progress: bool = True,
 ) -> int:
@@ -209,6 +210,8 @@ def process_source(
                 claude_model=cfg.claude_model,
                 output_format=cfg.output_format,
                 force=force,
+                archive=archive,
+                export_settings=export_settings,
             )
 
         if stages.copy or stages.transcribe:

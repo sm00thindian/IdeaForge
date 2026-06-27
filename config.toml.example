@@ -37,3 +37,10 @@ min_speakers = 2        # hint for 2-person recordings (optional)
 poll_interval_seconds = 5   # how often to check /Volumes
 settle_seconds = 5          # wait after mount before processing
 delete_after_copy = true    # remove recordings from device after verified local copy
+
+[export]
+reminders = false
+reminders_list = "IdeaForge"
+obsidian = false
+# obsidian_vault = "~/Documents/Obsidian/MyVault"
+obsidian_note = "IdeaForge/Action Items.md"

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ideaforge.config import has_anthropic_api_key, has_xai_api_key
+from ideaforge.export import ExportSettings, export_action_items
 from ideaforge.prompts import Mode, build_prompt
 from ideaforge.schema import (
     ActionItem,
@@ -47,6 +48,8 @@ def process_transcript(
     claude_model: str = "claude-sonnet-4-20250514",
     output_format: str = "both",
     force: bool = False,
+    archive: Optional[Path] = None,
+    export_settings: Optional[ExportSettings] = None,
 ) -> Optional[Path]:
     """Generate structured output from a transcript. Returns primary output path."""
     stem = transcript_path.stem
@@ -127,6 +130,8 @@ def process_transcript(
         transcript_path,
         llm_backend=used_backend,
         llm_model=used_model,
+        archive=archive,
+        export_settings=export_settings,
     )
     return primary_path
 
@@ -251,6 +256,8 @@ def _write_structured_output(
     transcript_path: Path,
     llm_backend: str,
     llm_model: str,
+    archive: Optional[Path] = None,
+    export_settings: Optional[ExportSettings] = None,
 ) -> Path:
     if mode == "creative":
         output = _dict_to_creative(parsed, transcript_path)
@@ -273,6 +280,20 @@ def _write_structured_output(
     if output_format in ("md", "both"):
         md_path.write_text(output.to_markdown(), encoding="utf-8")
         print(f"    ✓ Markdown saved: {md_path.name}")
+
+    if (
+        mode != "creative"
+        and isinstance(output, MeetingNotes)
+        and export_settings
+        and archive
+        and output.action_items
+    ):
+        export_action_items(
+            output,
+            archive=archive,
+            recording_stem=transcript_path.stem,
+            settings=export_settings,
+        )
 
     return md_path if output_format != "json" else json_path
 

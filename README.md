@@ -293,6 +293,12 @@ Daemon:
   --daemon-interval   Poll interval in seconds (default: 5)
   --daemon-settle     Seconds to wait after mount (default: 5)
 
+Export:
+  --export-only       Export from existing *_summary.json (requires --source)
+  --export-reminders  Push action items to Apple Reminders (macOS)
+  --export-obsidian   Append action items to Obsidian note
+  --no-export         Skip action item export this run
+
 Config:
   --archive           Archive root (default: ~/IdeaForge)
   --config            Path to config.toml
@@ -382,6 +388,35 @@ ideaforge --auto-source --llm-backend ollama
 
 Grok and Claude fall back to Ollama automatically if the API call fails.
 
+## Export action items
+
+Push action items from meeting notes to **Apple Reminders** (macOS) and/or **Obsidian**.
+
+```toml
+# ~/.config/ideaforge/config.toml
+[export]
+reminders = true
+reminders_list = "IdeaForge"
+obsidian = true
+obsidian_vault = "~/Documents/Obsidian/MyVault"
+obsidian_note = "IdeaForge/Action Items.md"
+```
+
+Exports run automatically after LLM summarization when enabled. Duplicate items are skipped via a fingerprint log at `~/IdeaForge/.action_export_log.json`.
+
+```bash
+# Export from existing summaries without re-running the LLM
+ideaforge --source ~/IdeaForge/2026-06-27 --export-only --export-reminders --export-obsidian
+
+# One-off flags override config for a single run
+ideaforge --source ~/IdeaForge/2026-06-27 --llm-only --export-reminders
+ideaforge --auto-source --no-export          # disable export this run
+```
+
+**Reminders** — creates tasks in a named list with owner, deadline, priority, and source quote in the notes.
+
+**Obsidian** — appends checkbox tasks with Dataview-friendly `priority::` / `source::` fields and wikilinks back to the recording summary.
+
 ## Transcription
 
 **Apple Silicon** — mlx-whisper is auto-selected (~1 min per 40 min of audio with `small` model):
@@ -427,6 +462,7 @@ ideaforge/
 ├── speakers.py     # Speaker map formatting
 ├── audio_util.py   # ffmpeg-free audio loader
 ├── llm.py          # Grok / Claude / Ollama backends
+├── export.py       # Apple Reminders + Obsidian action item export
 ├── prompts.py      # Meeting and creative prompts
 ├── schema.py       # MeetingNotes, SpeakerIdentity, etc.
 └── config.py       # TOML + .env loading
@@ -449,7 +485,7 @@ scripts/
 - [ ] Creative mode refinements (chord progression hints, melody notation)
 - [ ] MPS acceleration for pyannote diarization
 - [x] Watch folder / launchd automation for plug-and-process
-- [ ] Export action items to Apple Reminders / Obsidian
+- [x] Export action items to Apple Reminders / Obsidian
 
 ## Contributing
 
