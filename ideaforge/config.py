@@ -92,6 +92,7 @@ class IdeaForgeConfig:
     daemon_poll_interval: float = 5.0
     daemon_settle_seconds: float = 5.0
     daemon_delete_after_copy: bool = True
+    daemon_notify: bool = True
     export_reminders: bool = False
     export_reminders_list: str = "IdeaForge"
     export_obsidian: bool = False
@@ -157,6 +158,8 @@ class IdeaForgeConfig:
             )
             if "delete_after_copy" in daemon:
                 cfg.daemon_delete_after_copy = bool(daemon["delete_after_copy"])
+            if "notify" in daemon:
+                cfg.daemon_notify = bool(daemon["notify"])
         if "export" in data:
             export = data["export"]
             cfg.export_reminders = bool(export.get("reminders", cfg.export_reminders))

@@ -12,7 +12,8 @@ from typing import Callable, Dict, Optional, Set
 from ideaforge.config import IdeaForgeConfig
 from ideaforge.device import RecorderDevice, find_recorder_mounts
 from ideaforge.pipeline import PipelineStages, resolve_stages
-from ideaforge.runner import process_source
+from ideaforge.notify import notify_process_complete
+from ideaforge.runner import ProcessResult, process_source
 
 
 @dataclass(frozen=True)
@@ -75,8 +76,8 @@ class RecorderWatcher:
     def stop(self) -> None:
         self._running = False
 
-    def tick(self) -> Optional[int]:
-        """Single poll cycle. Returns files processed, or None if idle."""
+    def tick(self) -> Optional[ProcessResult]:
+        """Single poll cycle. Returns pipeline result, or None if idle."""
         devices = find_recorder_mounts()
         current = {str(device.mount_path): device for device in devices}
         current_mounts = set(current.keys())
@@ -117,7 +118,7 @@ class RecorderWatcher:
             return None
 
         archive = self.cfg.archive.expanduser().resolve()
-        count = self.process_fn(
+        pipeline_result = self.process_fn(
             device.mount_path,
             archive,
             self.cfg,
@@ -126,12 +127,16 @@ class RecorderWatcher:
             delete_from_device=self.cfg.daemon_delete_after_copy,
             export_settings=self.cfg.export_settings(force=self.force),
         )
+        if self.cfg.daemon_notify and (
+            pipeline_result.files_processed > 0 or pipeline_result.files_skipped > 0
+        ):
+            notify_process_complete(pipeline_result, device_label=device.label)
         refreshed = find_recorder_mounts()
         if len(refreshed) == 1:
             self._last_snapshot[mount_key] = snapshot_device(refreshed[0])
         else:
             self._last_snapshot[mount_key] = snap
-        return count
+        return pipeline_result
 
     def run(self) -> int:
         from ideaforge import __version__

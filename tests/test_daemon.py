@@ -7,6 +7,7 @@ import argparse
 
 from ideaforge.config import IdeaForgeConfig
 from ideaforge.daemon import DeviceSnapshot, RecorderWatcher, snapshot_device
+from ideaforge.notify import ProcessResult
 from ideaforge.device import RecorderDevice
 from ideaforge.pipeline import PipelineStages
 
@@ -49,7 +50,7 @@ def test_snapshot_device_tracks_count_and_mtime(tmp_path: Path):
 
 def test_tick_runs_pipeline_on_new_device(tmp_path: Path, monkeypatch):
     device = _device(tmp_path)
-    process_fn = MagicMock(return_value=1)
+    process_fn = MagicMock(return_value=ProcessResult(files_processed=1))
     watcher = _watcher(process_fn=process_fn)
 
     monkeypatch.setattr(
@@ -58,13 +59,13 @@ def test_tick_runs_pipeline_on_new_device(tmp_path: Path, monkeypatch):
     )
 
     result = watcher.tick()
-    assert result == 1
+    assert result.files_processed == 1
     process_fn.assert_called_once()
 
 
 def test_tick_skips_when_snapshot_unchanged(tmp_path: Path, monkeypatch):
     device = _device(tmp_path)
-    process_fn = MagicMock(return_value=1)
+    process_fn = MagicMock(return_value=ProcessResult(files_processed=1))
     watcher = _watcher(process_fn=process_fn)
 
     monkeypatch.setattr(
@@ -81,7 +82,7 @@ def test_tick_skips_when_snapshot_unchanged(tmp_path: Path, monkeypatch):
 
 def test_tick_runs_when_new_recording_added(tmp_path: Path, monkeypatch):
     device = _device(tmp_path, count=1)
-    process_fn = MagicMock(return_value=1)
+    process_fn = MagicMock(return_value=ProcessResult(files_processed=1))
     watcher = _watcher(process_fn=process_fn)
 
     monkeypatch.setattr(
@@ -104,14 +105,14 @@ def test_tick_runs_when_new_recording_added(tmp_path: Path, monkeypatch):
     )
 
     result = watcher.tick()
-    assert result == 1
+    assert result.files_processed == 1
     process_fn.assert_called_once()
 
 
 def test_tick_skips_multiple_devices(tmp_path: Path, monkeypatch):
     device_a = _device(tmp_path / "a")
     device_b = _device(tmp_path / "b")
-    process_fn = MagicMock(return_value=1)
+    process_fn = MagicMock(return_value=ProcessResult(files_processed=1))
     watcher = _watcher(process_fn=process_fn)
 
     monkeypatch.setattr(

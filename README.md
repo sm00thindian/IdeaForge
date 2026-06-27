@@ -131,6 +131,7 @@ max_speakers = 6
 poll_interval_seconds = 5
 settle_seconds = 5
 delete_after_copy = true  # remove from device after verified copy
+notify = true             # macOS popup when pipeline finishes
 ```
 
 For Claude instead of Grok:
@@ -201,6 +202,7 @@ tail -f ~/Library/Logs/ideaforge/daemon.log
 3. Hash-verify archive copy → delete from device (if `delete_after_copy = true`)
 4. Transcribe → diarize → LLM meeting notes (Grok by default)
 5. Skip files already in `.processed_log.json` (SHA-256 dedup)
+6. macOS notification with meeting title and action item summary (`notify = true`)
 
 Manual `ideaforge --auto-source` runs do **not** delete device files — only the daemon does.
 
@@ -390,14 +392,14 @@ Grok and Claude fall back to Ollama automatically if the API call fails.
 
 ## Export action items
 
-Push action items from meeting notes to **Apple Reminders** (macOS) and/or **Obsidian**.
+Optionally push action items from meeting notes to **Apple Reminders** (macOS) and/or **Obsidian**. **Both are off by default** — enable only what you use.
 
 ```toml
 # ~/.config/ideaforge/config.toml
 [export]
-reminders = true
+reminders = false          # opt-in: Apple Reminders (macOS)
 reminders_list = "IdeaForge"
-obsidian = true
+obsidian = false           # opt-in: append to Obsidian note
 obsidian_vault = "~/Documents/Obsidian/MyVault"
 obsidian_note = "IdeaForge/Action Items.md"
 ```

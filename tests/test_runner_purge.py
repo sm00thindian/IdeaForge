@@ -26,7 +26,7 @@ def test_daemon_purge_removes_file_after_copy(tmp_path: Path):
     stages = PipelineStages(copy=True, transcribe=False, diarize=False, llm=False)
 
     with patch("ideaforge.runner.is_path_on_recorder", return_value=True):
-        count = process_source(
+        result = process_source(
             volume,
             archive,
             cfg,
@@ -36,7 +36,7 @@ def test_daemon_purge_removes_file_after_copy(tmp_path: Path):
             show_progress=False,
         )
 
-    assert count == 1
+    assert result.files_processed == 1
     assert not wav.exists()
     assert (archive / "2026-06-27" / wav.name).exists()
 

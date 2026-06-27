@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
-from typing import Optional, Set
+from typing import List, Optional, Set
 
 try:
     from tqdm import tqdm
@@ -25,6 +26,7 @@ from ideaforge.ingest import (
     save_processed_log,
 )
 from ideaforge.llm import process_transcript
+from ideaforge.notify import ProcessResult, RecordingResult
 from ideaforge.pipeline import PipelineStages, should_skip_file
 from ideaforge.transcribe import diarize_existing, transcribe_audio
 
@@ -90,6 +92,27 @@ def _try_remove_from_device(
         print(f"   ⚠️  Kept on device — archive copy not verified: {source_file.name}")
 
 
+def _read_summary_brief(summary_json: Path) -> RecordingResult:
+    if not summary_json.exists():
+        return RecordingResult(stem=summary_json.stem.removesuffix("_summary"))
+    try:
+        data = json.loads(summary_json.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return RecordingResult(stem=summary_json.stem.removesuffix("_summary"))
+    actions = data.get("action_items", [])
+    preview = [
+        f"{a.get('who', 'TBD')}: {a.get('what', '')}"
+        for a in actions[:2]
+        if a.get("what")
+    ]
+    return RecordingResult(
+        stem=summary_json.stem.removesuffix("_summary"),
+        title=data.get("title"),
+        action_items=len(actions),
+        action_preview=preview,
+    )
+
+
 def process_source(
     source: Path,
     archive: Path,
@@ -101,8 +124,8 @@ def process_source(
     export_settings=None,
     show_header: bool = True,
     show_progress: bool = True,
-) -> int:
-    """Run the configured pipeline on all audio files under source. Returns files touched."""
+) -> ProcessResult:
+    """Run the configured pipeline on all audio files under source."""
     extensions: Set[str] = set(cfg.audio_extensions)
     audio_files = get_audio_files(source, extensions, cfg.min_file_size_bytes)
 
@@ -117,10 +140,10 @@ def process_source(
 
     if not audio_files:
         print("    ℹ️  No audio files to process")
-        return 0
+        return ProcessResult()
 
     processed_log = load_processed_log(archive)
-    newly_processed = 0
+    result = ProcessResult()
     iterator = tqdm(audio_files, desc="Processing") if show_progress and tqdm else audio_files
 
     for audio_file in iterator:
@@ -152,6 +175,11 @@ def process_source(
                         archive_copy,
                         enabled=True,
                     )
+            result.files_skipped += 1
+            brief = _read_summary_brief(paths["summary_json"])
+            brief.stem = audio_file.stem
+            brief.skipped = True
+            result.recordings.append(brief)
             continue
 
         process_path = audio_file
@@ -230,8 +258,11 @@ def process_source(
                 enabled=delete_from_device,
             )
 
-        newly_processed += 1
+        result.files_processed += 1
+        brief = _read_summary_brief(paths["summary_json"])
+        brief.stem = audio_file.stem
+        result.recordings.append(brief)
 
     save_processed_log(archive, processed_log)
-    print(f"\n✅ IdeaForge complete — {newly_processed} file(s) processed")
-    return newly_processed
+    print(f"\n✅ IdeaForge complete — {result.files_processed} file(s) processed")
+    return result
