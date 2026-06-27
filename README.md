@@ -191,7 +191,10 @@ launchctl kickstart -k gui/$(id -u)/com.ideaforge.daemon
 # Watch logs
 tail -f ~/Library/Logs/ideaforge/daemon.log
 
-# Uninstall
+# Stop (keeps install — restart with install-daemon.sh)
+./scripts/stop-daemon.sh
+
+# Uninstall completely
 ./scripts/uninstall-daemon.sh
 ```
 
@@ -472,6 +475,7 @@ ideaforge/
 scripts/
 ├── install-daemon.sh    # macOS LaunchAgent installer
 ├── run-daemon.sh        # Daemon wrapper (loads .env)
+├── stop-daemon.sh       # Stop daemon without uninstalling
 └── uninstall-daemon.sh
 ```
 

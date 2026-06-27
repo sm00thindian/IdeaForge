@@ -75,5 +75,6 @@ echo "The daemon watches /Volumes and runs the full pipeline when your recorder 
 echo ""
 echo "Commands:"
 echo "  tail -f \"$LOG_DIR/daemon.log\"     # watch activity"
+echo "  ./scripts/stop-daemon.sh               # stop (keeps install)"
 echo "  launchctl kickstart -k $DOMAIN/$LABEL  # restart"
-echo "  launchctl bootout $DOMAIN/$LABEL       # stop and uninstall"
+echo "  ./scripts/uninstall-daemon.sh          # stop and remove"
