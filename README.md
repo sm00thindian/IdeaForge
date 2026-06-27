@@ -1,129 +1,270 @@
 # IdeaForge
 
-**Local-first pipeline for USB voice recorders. Turn meetings into action items and ideas into creations.**
+**Plug in your recorder. Get meeting notes.**
 
-Copy audio from devices like the Z28/Z29 (exFAT USB) → transcribe locally → optional speaker diarization → structured LLM notes via Ollama or xAI Grok.
+IdeaForge is a local-first pipeline for USB voice recorders (Z28/Z29 and similar). It copies recordings off the device, transcribes them on your Mac, optionally labels who said what, and produces structured meeting notes with action items — powered by Grok or local Ollama.
+
+## How it works
+
+```
+USB recorder plugged in
+        │
+        ▼
+┌───────────────────┐
+│  Daemon detects   │  polls /Volumes every 5s (or run manually)
+│  device mount     │
+└─────────┬─────────┘
+          ▼
+┌───────────────────┐
+│  Copy to archive  │  ~/IdeaForge/YYYY-MM-DD/  (SHA-256 dedup)
+│  Verify + purge   │  optional: delete from device after verified copy
+└─────────┬─────────┘
+          ▼
+┌───────────────────┐
+│  Transcribe       │  mlx-whisper on Apple Silicon (~1 min / 40 min audio)
+└─────────┬─────────┘
+          ▼
+┌───────────────────┐
+│  Diarize          │  pyannote speaker labels [SPEAKER_00], etc. (optional)
+└─────────┬─────────┘
+          ▼
+┌───────────────────┐
+│  Summarize        │  Grok infers names, action items, decisions
+└─────────┬─────────┘
+          ▼
+   summary.md + summary.json
+```
+
+**Two ways to run:**
+
+| Mode | Command | Best for |
+|------|---------|----------|
+| **Daemon** (recommended) | `./scripts/install-daemon.sh` | Hands-off — plug in and walk away |
+| **Manual** | `ideaforge --auto-source` | One-off runs, testing, re-processing |
 
 ## Features
 
 | Stage | What it does |
 |-------|-------------|
-| **Ingest** | Safe copy from mounted USB recorder into dated archive (`~/IdeaForge/YYYY-MM-DD/`) with SHA-256 dedup |
-| **Transcribe** | [mlx-whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper) on Apple Silicon (auto), [faster-whisper](https://github.com/SYSTRAN/faster-whisper) fallback |
-| **Diarize** | Optional pyannote speaker labels (`--diarize`) — no re-transcription |
-| **Summarize** | Structured meeting notes or creative output via Ollama (local) or Grok (API) |
-| **Output** | Markdown + JSON with action items, decisions, Suno prompts, and more |
+| **Detect** | Auto-finds Z28/Z29 recorders under `/Volumes` by `RECORD/` folder + `R*.WAV` pattern |
+| **Ingest** | Copies to dated archive with SHA-256 dedup; skips files already processed |
+| **Purge** | Daemon removes recordings from device after hash-verified local copy |
+| **Transcribe** | mlx-whisper on Apple Silicon (auto), faster-whisper fallback elsewhere |
+| **Diarize** | pyannote speaker labels — runs on existing transcript, no re-transcription |
+| **Summarize** | Grok (auto when `XAI_API_KEY` set) or Ollama — structured JSON + Markdown |
+| **Speakers** | Grok infers real names/roles from conversation; no manual mapping required |
 
 ### Processing modes
 
-- **`meeting`** — Executive summary, speaker contributions, action items, decisions, follow-ups
-- **`creative`** — Song ideas, lyrics drafts, Suno v5.5 style/lyrics prompts
-- **`auto`** — LLM classifies transcript and routes to the appropriate schema
+- **`meeting`** — Executive summary, speaker identities, action items, decisions, follow-ups
+- **`creative`** — Song ideas, lyrics drafts, Suno v5.5 prompts
+- **`auto`** — LLM classifies transcript and picks the right schema
 
-## Quick Start
+## Quick start
 
 ### 1. Install
 
 ```bash
-git clone https://github.com/yourusername/IdeaForge.git
+git clone https://github.com/sm00thindian/IdeaForge.git
 cd IdeaForge
 python3 -m venv venv
 source venv/bin/activate
+pip install -e ".[all]"
+```
+
+Or with `requirements.txt` for a minimal install:
+
+```bash
 pip install -r requirements.txt
+pip install mlx-whisper pyannote.audio torch   # Apple Silicon + diarization
 ```
 
-### 2. Plug in recorder
+### 2. Secrets
 
-Z28/Z29 devices mount as exFAT volumes (often `NO NAME` on macOS) with a `RECORD/` folder:
-
-```
-/Volumes/NO NAME/
-├── RECORD/
-│   └── R2026-06-27-07-43-11.WAV   # 12 kHz mono PCM
-└── recset.txt                      # device settings
-```
-
-### 3. Run
+Create a `.env` file in the project root (or set environment variables):
 
 ```bash
-# Auto-detect recorder and process everything
-python ideaforge.py --auto-source
-
-# Or specify the mount path
-python ideaforge.py --source "/Volumes/NO NAME"
-
-# List files without processing
-python ideaforge.py --auto-source --list-only
-
-# Detect all attached recorders
-python ideaforge.py --detect
+XAI_API_KEY=xai-...          # Grok meeting notes (recommended)
+HF_TOKEN=hf_...                # pyannote diarization (requires HuggingFace license)
 ```
 
-### 4. LLM backends
+Accept the pyannote model license at [speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1) before using diarization.
 
-**Auto (default)** — IdeaForge checks for `XAI_API_KEY` and uses xAI Grok when present; otherwise falls back to local Ollama:
-
-```bash
-export XAI_API_KEY="your-key"   # Grok used automatically
-python ideaforge.py --auto-source
-```
-
-**Ollama only (fully local):**
-
-```bash
-ollama pull llama3.1
-python ideaforge.py --auto-source --llm-backend ollama
-```
-
-Grok is recommended for meeting notes — it excels at nuanced action item extraction, speaker-aware analysis, decisions vs. open questions, and follow-up identification. If a Grok call fails, IdeaForge automatically retries with Ollama.
-
-## CLI Reference
-
-```
-ideaforge [--source PATH | --auto-source] [options]
-
-Pipeline control:
-  --transcribe-only  Copy + transcribe only
-  --diarize-only     Diarize existing transcript (uses _segments.json cache)
-  --llm-only         Re-summarize existing transcript (seconds, not minutes)
-  --no-copy          Skip copying to archive
-  --no-transcribe    Skip transcription
-  --no-llm           Skip LLM summarization
-  --force            Reprocess even if outputs exist
-  --list-only        List audio files and exit
-  --detect           Show detected USB recorders
-
-Transcription:
-  --whisper-backend  auto | mlx | faster (default: auto — mlx on Apple Silicon)
-  --whisper-model    tiny | base | small | medium | large-v3 (default: small)
-  --diarize          Speaker diarization via pyannote (requires HF_TOKEN)
-  --min-speakers     pyannote hint (e.g. 2 for conversations)
-  --max-speakers     pyannote hint
-  --whisper-device   cpu | cuda (faster-whisper only)
-  --whisper-beam-size  Default: 1 (faster-whisper only)
-
-LLM:
-  --llm-backend      auto | ollama | grok (default: auto)
-  --ollama-model     Default: llama3.1
-  --grok-model       Default: grok-4.3
-  --mode             meeting | creative | auto
-  --output-format    md | json | both (default: both)
-
-Config:
-  --archive          Archive root (default: ~/IdeaForge)
-  --config           Path to config.toml
-```
-
-## Configuration
-
-Copy the example config:
+### 3. Configure
 
 ```bash
 mkdir -p ~/.config/ideaforge
 cp config.toml.example ~/.config/ideaforge/config.toml
 ```
 
-See [`config.toml.example`](config.toml.example) for all options.
+Key settings:
+
+```toml
+[processing]
+diarize = true              # enable speaker labels in full pipeline
+
+[diarization]
+min_speakers = 2
+max_speakers = 6
+
+[daemon]
+poll_interval_seconds = 5
+settle_seconds = 5          # wait after USB mount before reading files
+delete_after_copy = true    # remove recordings from device after verified copy
+```
+
+### 4. Your recorder
+
+Z28/Z29 devices mount as exFAT volumes (often `NO NAME` on macOS):
+
+```
+/Volumes/NO NAME/
+├── RECORD/
+│   └── R2026-06-27-07-43-11.WAV   # 12 kHz mono PCM
+└── recset.txt
+```
+
+### 5. Run
+
+**Daemon (set and forget):**
+
+```bash
+./scripts/install-daemon.sh
+tail -f ~/Library/Logs/ideaforge/daemon.log
+```
+
+Plug in the recorder — IdeaForge copies, transcribes, diarizes, summarizes, and clears the device.
+
+**Manual (one-shot):**
+
+```bash
+ideaforge --auto-source
+ideaforge --detect                    # list attached recorders
+ideaforge --auto-source --list-only   # preview files without processing
+```
+
+## Daemon
+
+The daemon watches `/Volumes` and runs the full pipeline when exactly one recorder is detected.
+
+```bash
+# Install as macOS LaunchAgent (starts at login, restarts on crash)
+./scripts/install-daemon.sh
+
+# Foreground (good for debugging)
+ideaforge --daemon
+
+# Restart after code or config changes
+launchctl kickstart -k gui/$(id -u)/com.ideaforge.daemon
+
+# Watch logs
+tail -f ~/Library/Logs/ideaforge/daemon.log
+
+# Uninstall
+./scripts/uninstall-daemon.sh
+```
+
+**What happens on plug-in:**
+
+1. Device detected → wait `settle_seconds` for mount to stabilize
+2. Copy new recordings to `~/IdeaForge/YYYY-MM-DD/`
+3. Hash-verify archive copy → delete from device (if `delete_after_copy = true`)
+4. Transcribe → diarize → Grok meeting notes
+5. Skip files already in `.processed_log.json` (SHA-256 dedup)
+
+Manual `ideaforge --auto-source` runs do **not** delete device files — only the daemon does.
+
+## Speaker names
+
+Transcripts use pyannote labels: `[SPEAKER_00]`, `[SPEAKER_01]`, etc.
+
+Grok analyzes the conversation and infers who each speaker is — from self-introductions, direct address, and context. Results appear in meeting notes as:
+
+```json
+"speaker_identities": [
+  {
+    "speaker_id": "SPEAKER_00",
+    "inferred_name": "Alex",
+    "confidence": "high",
+    "rationale": "Said 'I'm Alex' at the start"
+  }
+]
+```
+
+Inferred names are used in action items, decisions, and speaker contributions — not raw `SPEAKER_XX` labels.
+
+Optional: override labels in the saved transcript with `[speakers.map]` in `config.toml` if you already know who is who.
+
+## Pipeline stages
+
+Run the full pipeline or individual stages:
+
+```bash
+# Full pipeline (default)
+ideaforge --auto-source
+
+# Re-run Grok only (~10 seconds)
+ideaforge --source ~/IdeaForge/2026-06-27 --llm-only --force
+
+# Diarize without re-transcribing (~25 min CPU; uses cached _turns.json on re-run)
+ideaforge --source ~/IdeaForge/2026-06-27 --diarize-only --no-copy
+
+# Transcribe only (fast mlx pass)
+ideaforge --auto-source --transcribe-only
+```
+
+| Flag | Pipeline |
+|------|----------|
+| *(default)* | copy → transcribe → diarize* → llm |
+| `--transcribe-only` | copy → transcribe |
+| `--diarize-only` | diarize → llm |
+| `--llm-only` | llm |
+| `--no-llm` | skip summarization |
+| `--no-copy` | process in-place on device/archive folder |
+| `--force` | reprocess even if outputs exist |
+
+\*Diarize runs when `diarize = true` in config or `--diarize` flag is set.
+
+## CLI reference
+
+```
+ideaforge [--source PATH | --auto-source | --daemon] [options]
+
+Source:
+  --source PATH       Mounted recorder or folder
+  --auto-source       Auto-detect USB recorder under /Volumes
+  --daemon            Watch for recorder plug-in (foreground)
+  --detect            List detected recorders and exit
+
+Pipeline:
+  --transcribe-only   Copy + transcribe only
+  --diarize-only      Diarize existing transcript
+  --llm-only          Re-summarize existing transcript
+  --no-copy           Skip copying to archive
+  --no-llm            Skip LLM summarization
+  --force             Reprocess even if outputs exist
+
+Transcription:
+  --whisper-backend   auto | mlx | faster
+  --whisper-model     tiny | base | small | medium | large-v3
+  --diarize           Enable speaker diarization
+  --min-speakers      pyannote hint (e.g. 2)
+  --max-speakers      pyannote hint (e.g. 6)
+
+LLM:
+  --llm-backend       auto | ollama | grok
+  --grok-model        Default: grok-4.3
+  --mode              meeting | creative | auto
+  --output-format     md | json | both
+
+Daemon:
+  --daemon-interval   Poll interval in seconds (default: 5)
+  --daemon-settle     Seconds to wait after mount (default: 5)
+
+Config:
+  --archive           Archive root (default: ~/IdeaForge)
+  --config            Path to config.toml
+```
 
 ## Output structure
 
@@ -132,124 +273,128 @@ After processing `R2026-06-27-07-43-11.WAV`:
 ```
 ~/IdeaForge/2026-06-27/
 ├── R2026-06-27-07-43-11.WAV              # archived audio
-├── R2026-06-27-07-43-11.txt              # transcript
+├── R2026-06-27-07-43-11.txt              # transcript ([SPEAKER_XX] if diarized)
 ├── R2026-06-27-07-43-11_whisper.json     # transcription metadata
 ├── R2026-06-27-07-43-11_segments.json    # timestamped segments (for --diarize-only)
-├── R2026-06-27-07-43-11_turns.json       # cached pyannote turns (skip re-diarize)
-├── R2026-06-27-07-43-11_diarized.json    # speaker-labeled segments (if --diarize)
-├── R2026-06-27-07-43-11_summary.md       # formatted notes
+├── R2026-06-27-07-43-11_turns.json       # cached pyannote turns
+├── R2026-06-27-07-43-11_diarized.json    # speaker-labeled segments
+├── R2026-06-27-07-43-11_summary.md       # formatted meeting notes
 └── R2026-06-27-07-43-11_summary.json     # structured data
 ```
 
-### Meeting JSON schema
+### Meeting JSON (excerpt)
 
 ```json
 {
   "title": "Q2 Planning Sync",
   "meeting_type": "planning",
   "executive_summary": "...",
-  "topics": ["Roadmap", "Hiring"],
-  "speakers": [{"speaker": "SPEAKER_00", "summary": "...", "key_quotes": []}],
-  "key_points": ["..."],
-  "action_items": [{
-    "who": "Alex", "what": "Send deck", "when": "Friday",
-    "priority": "high", "confidence": "explicit",
-    "source_quote": "I'll send the deck Friday", "blocked_by": null
-  }],
-  "decisions": [{"decision": "Delay launch", "rationale": "...", "made_by": "SPEAKER_00"}],
-  "open_questions": ["..."],
-  "follow_ups": [{"topic": "Capacity", "owner": "Alex", "by_when": "next week", "context": "..."}],
-  "risks_blockers": ["..."],
+  "speaker_identities": [
+    {
+      "speaker_id": "SPEAKER_00",
+      "inferred_name": "Alex",
+      "confidence": "high",
+      "rationale": "Introduced themselves at the start"
+    }
+  ],
+  "speakers": [
+    {"speaker": "Alex (SPEAKER_00)", "summary": "...", "key_quotes": ["..."]}
+  ],
+  "action_items": [
+    {
+      "who": "Alex",
+      "what": "Send deck",
+      "when": "Friday",
+      "priority": "high",
+      "confidence": "explicit",
+      "source_quote": "I'll send the deck Friday"
+    }
+  ],
+  "decisions": [{"decision": "Delay launch", "rationale": "...", "made_by": "Alex"}],
+  "follow_ups": [{"topic": "Capacity", "owner": "Alex", "by_when": "next week"}],
   "metadata": {"llm_backend": "grok", "llm_model": "grok-4.3"}
 }
 ```
 
-## Transcription backends
+## LLM backends
 
-**Apple Silicon (M1/M2/M3)** — mlx-whisper is auto-selected for fast local transcription:
+**Auto (default)** — uses Grok when `XAI_API_KEY` is set; otherwise Ollama:
+
+```bash
+export XAI_API_KEY="your-key"
+ideaforge --auto-source
+```
+
+**Ollama only (fully local):**
+
+```bash
+ollama pull llama3.1
+ideaforge --auto-source --llm-backend ollama
+```
+
+Grok is recommended for meeting notes. If a Grok call fails, IdeaForge automatically retries with Ollama.
+
+## Transcription
+
+**Apple Silicon** — mlx-whisper is auto-selected (~1 min per 40 min of audio with `small` model):
 
 ```bash
 pip install mlx-whisper scipy
-python ideaforge.py --auto-source   # uses mlx + small model by default
+ideaforge --auto-source
 ```
 
 **Other platforms** — falls back to faster-whisper on CPU.
 
-## Speaker diarization (optional)
+Audio is loaded without ffmpeg (numpy/scipy WAV reader) for reliability.
 
-Diarization runs **after** transcription via pyannote — no double transcription:
+## Speaker diarization
+
+Diarization runs **after** transcription via pyannote — speaker labels are applied to the existing transcript, not a second transcription pass.
 
 ```bash
 pip install pyannote.audio torch
 export HF_TOKEN="hf_..."
 ```
 
-Accept the license at [pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1), then:
+Enable in config (`diarize = true`) or per-run (`--diarize`). Tune speaker count hints:
 
 ```bash
-python ideaforge.py --auto-source --diarize
+ideaforge --auto-source --min-speakers 2 --max-speakers 6
 ```
 
-Pipeline: `mlx-whisper → pyannote (speaker labels) → Grok 4.3 (smart meeting notes)`
+Cached `_turns.json` and `_segments.json` make re-runs fast — use `--diarize-only` to re-label without re-transcribing.
 
 ## Architecture
 
 ```
 ideaforge/
-├── cli.py          # Argument parsing and pipeline orchestration
-├── ingest.py       # File discovery, hashing, safe copy
-├── device.py       # Z28/Z29 USB recorder auto-detection
-├── backends.py     # mlx-whisper + faster-whisper engines
-├── transcribe.py   # Transcription orchestration
-├── diarize.py      # pyannote speaker labeling (no re-transcription)
-├── audio_util.py   # ffmpeg-free audio loader for mlx
-├── llm.py          # Ollama / Grok backends, JSON parsing
-├── prompts.py      # Meeting, creative, and auto-mode prompts
-├── schema.py       # MeetingNotes and CreativeOutput dataclasses
-└── config.py       # TOML config loading
+├── cli.py          # CLI entry point
+├── daemon.py       # USB watcher — plug-and-process
+├── runner.py       # Pipeline execution (shared by CLI and daemon)
+├── pipeline.py     # Stage resolution (--llm-only, etc.)
+├── ingest.py       # Copy, dedup, device purge
+├── device.py       # Z28/Z29 detection
+├── transcribe.py   # mlx-whisper / faster-whisper orchestration
+├── diarize.py      # pyannote speaker labeling
+├── speakers.py     # Speaker map formatting
+├── audio_util.py   # ffmpeg-free audio loader
+├── llm.py          # Grok / Ollama backends
+├── prompts.py      # Meeting and creative prompts
+├── schema.py       # MeetingNotes, SpeakerIdentity, etc.
+└── config.py       # TOML + .env loading
+
+scripts/
+├── install-daemon.sh    # macOS LaunchAgent installer
+├── run-daemon.sh        # Daemon wrapper (loads .env)
+└── uninstall-daemon.sh
 ```
 
 ## Privacy
 
-- **Local by default** — audio and transcripts never leave your machine unless you choose Grok
+- **Local by default** — audio and transcripts stay on your machine
+- **Grok is opt-in** — only used when `XAI_API_KEY` is set (auto backend picks it up)
 - **No telemetry** — no analytics, no cloud storage
-- **Dedup log** — `.processed_log.json` tracks processed file hashes locally
-- **Grok is opt-in** — requires explicit `--llm-backend grok` and `XAI_API_KEY`
-
-## Stage-only workflows
-
-```bash
-# Re-run Grok after tweaking prompts (~10 seconds)
-ideaforge --source ~/IdeaForge/2026-06-27 --llm-only --force
-
-# Diarize without re-transcribing (uses cached _turns.json on re-run)
-ideaforge --source ~/IdeaForge/2026-06-27 --diarize-only --no-copy --min-speakers 2
-
-# Transcribe only (fast mlx pass)
-ideaforge --auto-source --transcribe-only
-```
-
-Grok infers speaker names from the diarized transcript (self-introductions, direct address, context) and includes them in `speaker_identities` in the meeting notes. Optionally override labels in the saved transcript with `[speakers.map]` in `config.toml` if you already know who is who.
-
-## Daemon (plug-and-process)
-
-Run IdeaForge in the background — it polls `/Volumes` and starts the full pipeline when your recorder is plugged in.
-
-```bash
-# Foreground (good for testing)
-ideaforge --daemon
-
-# Install as a macOS LaunchAgent (starts at login, restarts on crash)
-./scripts/install-daemon.sh
-
-# Watch logs
-tail -f ~/Library/Logs/ideaforge/daemon.log
-
-# Stop
-./scripts/uninstall-daemon.sh
-```
-
-Configure poll interval and mount settle time in `config.toml` under `[daemon]`. The daemon waits a few seconds after mount so the volume is fully readable before copying files. With `delete_after_copy = true` (default), recordings are removed from the device after the local copy is hash-verified.
+- **Dedup log** — `~/IdeaForge/.processed_log.json` tracks file hashes locally
 
 ## Roadmap
 
