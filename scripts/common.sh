@@ -56,3 +56,53 @@ ensure_ideaforge_venv() {
 
   echo "Installed IdeaForge into venv: $venv/bin/ideaforge"
 }
+
+launch_agent_domain() {
+  printf 'gui/%s' "$(id -u)"
+}
+
+unload_launch_agent() {
+  local plist="$1"
+  local label="$2"
+  local domain
+  domain="$(launch_agent_domain)"
+
+  launchctl bootout "$domain/$label" 2>/dev/null || true
+  launchctl bootout "$domain" "$plist" 2>/dev/null || true
+  launchctl unload "$plist" 2>/dev/null || true
+  launchctl disable "$domain/$label" 2>/dev/null || true
+}
+
+load_launch_agent() {
+  local plist="$1"
+  local label="$2"
+  local domain
+  domain="$(launch_agent_domain)"
+
+  if [[ ! -f "$plist" ]]; then
+    echo "Plist not found: $plist" >&2
+    return 1
+  fi
+
+  if ! plutil -lint "$plist" >/dev/null 2>&1; then
+    echo "Invalid plist: $plist" >&2
+    plutil -lint "$plist" >&2
+    return 1
+  fi
+
+  unload_launch_agent "$plist" "$label"
+  sleep 0.5
+
+  # bootstrap fails on some macOS versions (e.g. 26.x) — fall back to load
+  if launchctl bootstrap "$domain" "$plist" 2>/dev/null; then
+    launchctl enable "$domain/$label" 2>/dev/null || true
+  elif launchctl load -w "$plist" 2>/dev/null; then
+    echo "Loaded via launchctl load (bootstrap unavailable on this macOS version)."
+  else
+    echo "Failed to load LaunchAgent." >&2
+    return 1
+  fi
+
+  launchctl kickstart -k "$domain/$label" 2>/dev/null || true
+  return 0
+}

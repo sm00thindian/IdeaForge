@@ -2,8 +2,11 @@
 # Stop the IdeaForge LaunchAgent without uninstalling (plist is kept for restart)
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/common.sh"
+
 LABEL="com.ideaforge.daemon"
-DOMAIN="gui/$(id -u)"
 PLIST_PATH="$HOME/Library/LaunchAgents/$LABEL.plist"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
@@ -17,14 +20,12 @@ if [[ ! -f "$PLIST_PATH" ]]; then
   exit 1
 fi
 
-launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
-launchctl disable "$DOMAIN/$LABEL" 2>/dev/null || true
+unload_launch_agent "$PLIST_PATH" "$LABEL"
 
 echo "IdeaForge daemon stopped."
 echo ""
 echo "Restart:"
 echo "  ./scripts/install-daemon.sh"
-echo "  # or: launchctl enable $DOMAIN/$LABEL && launchctl kickstart -k $DOMAIN/$LABEL"
 echo ""
 echo "Remove completely:"
 echo "  ./scripts/uninstall-daemon.sh"

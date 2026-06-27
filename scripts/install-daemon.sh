@@ -66,10 +66,7 @@ cat > "$PLIST_PATH" <<EOF
 </plist>
 EOF
 
-launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
-launchctl bootstrap "$DOMAIN" "$PLIST_PATH"
-launchctl enable "$DOMAIN/$LABEL" 2>/dev/null || true
-launchctl kickstart -k "$DOMAIN/$LABEL"
+load_launch_agent "$PLIST_PATH" "$LABEL"
 
 echo "Installed IdeaForge daemon:"
 echo "  Plist:  $PLIST_PATH"
