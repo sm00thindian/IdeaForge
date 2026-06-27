@@ -33,6 +33,14 @@ class FollowUp:
 
 
 @dataclass
+class SpeakerIdentity:
+    speaker_id: str
+    inferred_name: str
+    confidence: str  # high | medium | low | unknown
+    rationale: Optional[str] = None
+
+
+@dataclass
 class SpeakerContribution:
     speaker: str
     summary: str
@@ -48,6 +56,7 @@ class MeetingNotes:
     executive_summary: str
     meeting_type: Optional[str] = None
     topics: List[str] = field(default_factory=list)
+    speaker_identities: List[SpeakerIdentity] = field(default_factory=list)
     speakers: List[SpeakerContribution] = field(default_factory=list)
     key_points: List[str] = field(default_factory=list)
     action_items: List[ActionItem] = field(default_factory=list)
@@ -74,6 +83,17 @@ class MeetingNotes:
             lines += ["## Topics", ""]
             for topic in self.topics:
                 lines.append(f"- {topic}")
+            lines.append("")
+
+        if self.speaker_identities:
+            lines += ["## Speaker Identities", ""]
+            lines.append("| Label | Inferred Name | Confidence | Rationale |")
+            lines.append("|-------|---------------|------------|-----------|")
+            for identity in self.speaker_identities:
+                lines.append(
+                    f"| {identity.speaker_id} | {identity.inferred_name} | "
+                    f"{identity.confidence} | {identity.rationale or '—'} |"
+                )
             lines.append("")
 
         if self.speakers:

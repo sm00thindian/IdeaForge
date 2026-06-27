@@ -18,6 +18,7 @@ from ideaforge.schema import (
     FollowUp,
     MeetingNotes,
     SpeakerContribution,
+    SpeakerIdentity,
 )
 
 try:
@@ -216,6 +217,15 @@ def _write_structured_output(
 
 
 def _dict_to_meeting(data: Dict[str, Any], transcript_path: Path) -> MeetingNotes:
+    speaker_identities = [
+        SpeakerIdentity(
+            speaker_id=item.get("speaker_id", "UNKNOWN"),
+            inferred_name=item.get("inferred_name", "Unknown"),
+            confidence=item.get("confidence", "unknown"),
+            rationale=item.get("rationale"),
+        )
+        for item in data.get("speaker_identities", [])
+    ]
     speakers = [
         SpeakerContribution(
             speaker=s.get("speaker", "Unknown"),
@@ -245,6 +255,7 @@ def _dict_to_meeting(data: Dict[str, Any], transcript_path: Path) -> MeetingNote
         meeting_type=data.get("meeting_type"),
         executive_summary=data.get("executive_summary", ""),
         topics=data.get("topics", []),
+        speaker_identities=speaker_identities,
         speakers=speakers,
         key_points=data.get("key_points", []),
         action_items=actions,

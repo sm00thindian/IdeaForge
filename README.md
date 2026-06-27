@@ -83,6 +83,9 @@ Grok is recommended for meeting notes — it excels at nuanced action item extra
 ideaforge [--source PATH | --auto-source] [options]
 
 Pipeline control:
+  --transcribe-only  Copy + transcribe only
+  --diarize-only     Diarize existing transcript (uses _segments.json cache)
+  --llm-only         Re-summarize existing transcript (seconds, not minutes)
   --no-copy          Skip copying to archive
   --no-transcribe    Skip transcription
   --no-llm           Skip LLM summarization
@@ -94,6 +97,8 @@ Transcription:
   --whisper-backend  auto | mlx | faster (default: auto — mlx on Apple Silicon)
   --whisper-model    tiny | base | small | medium | large-v3 (default: small)
   --diarize          Speaker diarization via pyannote (requires HF_TOKEN)
+  --min-speakers     pyannote hint (e.g. 2 for conversations)
+  --max-speakers     pyannote hint
   --whisper-device   cpu | cuda (faster-whisper only)
   --whisper-beam-size  Default: 1 (faster-whisper only)
 
@@ -129,7 +134,9 @@ After processing `R2026-06-27-07-43-11.WAV`:
 ├── R2026-06-27-07-43-11.WAV              # archived audio
 ├── R2026-06-27-07-43-11.txt              # transcript
 ├── R2026-06-27-07-43-11_whisper.json     # transcription metadata
-├── R2026-06-27-07-43-11_diarized.json    # speaker segments (if --diarize)
+├── R2026-06-27-07-43-11_segments.json    # timestamped segments (for --diarize-only)
+├── R2026-06-27-07-43-11_turns.json       # cached pyannote turns (skip re-diarize)
+├── R2026-06-27-07-43-11_diarized.json    # speaker-labeled segments (if --diarize)
 ├── R2026-06-27-07-43-11_summary.md       # formatted notes
 └── R2026-06-27-07-43-11_summary.json     # structured data
 ```
@@ -209,13 +216,47 @@ ideaforge/
 - **Dedup log** — `.processed_log.json` tracks processed file hashes locally
 - **Grok is opt-in** — requires explicit `--llm-backend grok` and `XAI_API_KEY`
 
+## Stage-only workflows
+
+```bash
+# Re-run Grok after tweaking prompts (~10 seconds)
+ideaforge --source ~/IdeaForge/2026-06-27 --llm-only --force
+
+# Diarize without re-transcribing (uses cached _turns.json on re-run)
+ideaforge --source ~/IdeaForge/2026-06-27 --diarize-only --no-copy --min-speakers 2
+
+# Transcribe only (fast mlx pass)
+ideaforge --auto-source --transcribe-only
+```
+
+Grok infers speaker names from the diarized transcript (self-introductions, direct address, context) and includes them in `speaker_identities` in the meeting notes. Optionally override labels in the saved transcript with `[speakers.map]` in `config.toml` if you already know who is who.
+
+## Daemon (plug-and-process)
+
+Run IdeaForge in the background — it polls `/Volumes` and starts the full pipeline when your recorder is plugged in.
+
+```bash
+# Foreground (good for testing)
+ideaforge --daemon
+
+# Install as a macOS LaunchAgent (starts at login, restarts on crash)
+./scripts/install-daemon.sh
+
+# Watch logs
+tail -f ~/Library/Logs/ideaforge/daemon.log
+
+# Stop
+./scripts/uninstall-daemon.sh
+```
+
+Configure poll interval and mount settle time in `config.toml` under `[daemon]`. The daemon waits a few seconds after mount so the volume is fully readable before copying files. With `delete_after_copy = true` (default), recordings are removed from the device after the local copy is hash-verified.
+
 ## Roadmap
 
 - [ ] Creative mode refinements (chord progression hints, melody notation)
-- [ ] Batch re-processing of archived transcripts
-- [ ] Apple Silicon GPU acceleration (Metal/MPS)
-- [ ] Watch folder / launchd automation for plug-and-process
-- [ ] Export to Obsidian, Notion, or Apple Notes
+- [ ] MPS acceleration for pyannote diarization
+- [x] Watch folder / launchd automation for plug-and-process
+- [ ] Export action items to Apple Reminders / Obsidian
 
 ## Contributing
 

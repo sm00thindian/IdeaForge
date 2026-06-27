@@ -7,7 +7,7 @@ import json
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Optional, Set
 
 
 def compute_file_hash(file_path: Path, block_size: int = 65536) -> str:
@@ -70,16 +70,71 @@ def copy_file_safely(src: Path, dest_folder: Path) -> Path:
     return dest
 
 
+def verify_copy(src: Path, archive_copy: Path) -> bool:
+    """Confirm archive copy exists and matches source byte-for-byte."""
+    if not src.is_file() or not archive_copy.is_file():
+        return False
+    try:
+        return compute_file_hash(src) == compute_file_hash(archive_copy)
+    except OSError:
+        return False
+
+
+def find_archive_copy(
+    source: Path,
+    archive_root: Path,
+    processed_log: Optional[Dict[str, Any]] = None,
+) -> Optional[Path]:
+    """Locate a local archive file that matches the source recording."""
+    try:
+        source_hash = compute_file_hash(source)
+    except OSError:
+        return None
+
+    candidates: List[Path] = []
+    if processed_log:
+        entry = processed_log.get("files", {}).get(source_hash)
+        if entry:
+            candidates.append(Path(entry["archive"]))
+
+    dest_folder = archive_folder_for_file(source, archive_root)
+    candidates.extend([
+        dest_folder / source.name,
+        dest_folder / f"{source.stem}_{source_hash[:10]}{source.suffix}",
+    ])
+
+    seen: Set[str] = set()
+    for candidate in candidates:
+        key = str(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        if candidate.is_file() and compute_file_hash(candidate) == source_hash:
+            return candidate
+    return None
+
+
+def remove_device_file_after_copy(source: Path, archive_copy: Path) -> bool:
+    """Delete source from device only after hash-verified archive copy."""
+    if not verify_copy(source, archive_copy):
+        return False
+    source.unlink()
+    return True
+
+
 def record_processed(
     log: Dict[str, Any],
     source_file: Path,
     archive_path: Path,
+    *,
+    archive_file: Optional[Path] = None,
+    file_hash: Optional[str] = None,
 ) -> None:
-    file_hash = compute_file_hash(source_file)
+    file_hash = file_hash or compute_file_hash(source_file)
     if file_hash not in log["hashes"]:
         log["hashes"].append(file_hash)
     log["files"][file_hash] = {
         "source": str(source_file),
-        "archive": str(archive_path),
+        "archive": str(archive_file or archive_path),
         "processed_at": datetime.now().isoformat(timespec="seconds"),
     }

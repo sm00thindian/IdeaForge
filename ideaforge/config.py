@@ -49,6 +49,18 @@ def load_dotenv(path: Optional[Path] = None) -> Optional[Path]:
     return dotenv_path
 
 
+def _hf_login(token: str) -> None:
+    """Register HF token with huggingface_hub (best-effort, non-fatal)."""
+    if not token:
+        return
+    try:
+        from huggingface_hub import login  # type: ignore
+
+        login(token=token, add_to_git_credential=False)
+    except Exception:
+        pass
+
+
 def has_xai_api_key() -> bool:
     key = os.getenv("XAI_API_KEY", "")
     return bool(key and key.strip())
@@ -68,6 +80,12 @@ class IdeaForgeConfig:
     mode: str = "meeting"
     output_format: str = "both"  # md | json | both
     diarize: bool = False
+    min_speakers: Optional[int] = None
+    max_speakers: Optional[int] = None
+    speaker_map: Dict[str, str] = field(default_factory=dict)
+    daemon_poll_interval: float = 5.0
+    daemon_settle_seconds: float = 5.0
+    daemon_delete_after_copy: bool = True
     min_file_size_bytes: int = 50_000
     hf_token: Optional[str] = None
     audio_extensions: List[str] = field(
@@ -105,15 +123,36 @@ class IdeaForgeConfig:
             cfg.diarize = p.get("diarize", cfg.diarize)
             cfg.min_file_size_bytes = p.get("min_file_size_bytes", cfg.min_file_size_bytes)
         if "diarization" in data:
-            cfg.hf_token = data["diarization"].get("hf_token")
+            d = data["diarization"]
+            cfg.hf_token = d.get("hf_token")
+            cfg.min_speakers = d.get("min_speakers")
+            cfg.max_speakers = d.get("max_speakers")
+        if "speakers" in data:
+            speakers = data["speakers"]
+            if "map" in speakers:
+                cfg.speaker_map = {str(k): str(v) for k, v in speakers["map"].items()}
+            elif "names" in speakers:
+                cfg.speaker_map = {str(k): str(v) for k, v in speakers["names"].items()}
         if "audio_extensions" in data:
             cfg.audio_extensions = data["audio_extensions"]
+        if "daemon" in data:
+            daemon = data["daemon"]
+            cfg.daemon_poll_interval = float(
+                daemon.get("poll_interval_seconds", cfg.daemon_poll_interval)
+            )
+            cfg.daemon_settle_seconds = float(
+                daemon.get("settle_seconds", cfg.daemon_settle_seconds)
+            )
+            if "delete_after_copy" in daemon:
+                cfg.daemon_delete_after_copy = bool(daemon["delete_after_copy"])
         return cfg
 
     def resolve_secrets(self) -> None:
         """Fill HF token from environment if not set in config."""
         if not self.hf_token:
             self.hf_token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN")
+        if self.hf_token:
+            _hf_login(self.hf_token.strip())
 
     def resolve_llm_backend(self, cli_override: Optional[str] = None) -> str:
         """Pick LLM backend: CLI flag > config > auto-detect XAI_API_KEY."""

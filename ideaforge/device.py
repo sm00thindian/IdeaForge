@@ -92,6 +92,19 @@ def _find_settings_file(volume: Path) -> Optional[Path]:
     return None
 
 
+def is_path_on_recorder(file_path: Path, volumes_root: Path = Path("/Volumes")) -> bool:
+    """True if file_path lives on a detected USB recorder volume."""
+    try:
+        resolved = file_path.resolve()
+    except OSError:
+        return False
+    parts = resolved.parts
+    if len(parts) < 3 or parts[0] != "/" or parts[1] != "Volumes":
+        return False
+    volume = volumes_root / parts[2]
+    return is_recorder_volume(volume)
+
+
 def describe_device(device: RecorderDevice) -> str:
     lines = [
         f"  Mount:      {device.mount_path}",

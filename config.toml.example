@@ -23,5 +23,16 @@ min_file_size_bytes = 50000
 
 [diarization]
 # Hugging Face token for pyannote models (or set HF_TOKEN env var)
-# Accept license: https://huggingface.co/pyannote/speaker-diarization-3.1
 # hf_token = "hf_..."
+min_speakers = 2        # hint for 2-person recordings (optional)
+# max_speakers = 2
+
+# Optional: override pyannote labels in the saved transcript (Grok infers names by default)
+# [speakers.map]
+# SPEAKER_00 = "Kilynn"
+# SPEAKER_01 = "Alex"
+
+[daemon]
+poll_interval_seconds = 5   # how often to check /Volumes
+settle_seconds = 5          # wait after mount before processing
+delete_after_copy = true    # remove recordings from device after verified local copy

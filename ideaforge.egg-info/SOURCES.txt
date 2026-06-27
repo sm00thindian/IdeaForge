@@ -10,8 +10,10 @@ ideaforge/device.py
 ideaforge/diarize.py
 ideaforge/ingest.py
 ideaforge/llm.py
+ideaforge/pipeline.py
 ideaforge/prompts.py
 ideaforge/schema.py
+ideaforge/speakers.py
 ideaforge/transcribe.py
 ideaforge/transcription_types.py
 ideaforge.egg-info/PKG-INFO
@@ -24,7 +26,11 @@ tests/test_audio_util.py
 tests/test_config.py
 tests/test_device.py
 tests/test_diarize.py
+tests/test_diarize_cache.py
+tests/test_dotenv.py
 tests/test_ingest.py
 tests/test_llm.py
+tests/test_pipeline.py
 tests/test_prompts.py
 tests/test_schema.py
+tests/test_speakers.py

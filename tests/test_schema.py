@@ -8,6 +8,7 @@ from ideaforge.schema import (
     FollowUp,
     MeetingNotes,
     SpeakerContribution,
+    SpeakerIdentity,
 )
 
 
@@ -47,6 +48,33 @@ def test_meeting_notes_markdown():
     assert "Delay launch to August" in md
     assert "Risks & Blockers" in md
     assert "explicit" in md
+
+
+def test_speaker_identities_in_markdown():
+    notes = MeetingNotes(
+        title="Team Sync",
+        date="2026-06-27",
+        executive_summary="Quick alignment on priorities.",
+        speaker_identities=[
+            SpeakerIdentity(
+                speaker_id="SPEAKER_00",
+                inferred_name="Alex",
+                confidence="high",
+                rationale="Introduced as Alex at start",
+            ),
+            SpeakerIdentity(
+                speaker_id="SPEAKER_01",
+                inferred_name="Project lead",
+                confidence="medium",
+                rationale="Led timeline discussion, name not stated",
+            ),
+        ],
+    )
+    md = notes.to_markdown()
+    assert "Speaker Identities" in md
+    assert "SPEAKER_00" in md
+    assert "Alex" in md
+    assert "Project lead" in md
 
 
 def test_creative_output_json_roundtrip():

@@ -22,9 +22,15 @@ Core principles:
 - Distinguish firm decisions from proposals, brainstorming, and unresolved debate.
 - Extract both explicit commitments ("I will send the deck Friday") and implicit ones ("someone should \
 reach out to legal" → action item with inferred owner if clear from context).
-- When speaker labels ([SPEAKER_00], etc.) are present, attribute contributions and action items to them.
+- When speaker labels ([SPEAKER_00], etc.) are present, infer real names or roles from conversation \
+evidence (self-introductions, direct address, context). Populate speaker_identities with your best \
+guess and confidence for each label.
+- Use inferred names everywhere people are referenced: speakers, action_items.who, decisions.made_by, \
+and follow_ups.owner. Never use raw SPEAKER_XX in those fields when speaker_identities has a \
+medium- or high-confidence guess — use the inferred_name instead (optionally with label in parens).
+- Only use raw SPEAKER_XX or 'TBD' when confidence is low or unknown.
 - When no speaker labels exist, use "Unattributed" or role descriptions only if clearly inferable \
-(e.g., "the client", "project lead") — never guess names.
+(e.g., "the client", "project lead") — never guess personal names without evidence.
 - Prefer completeness over brevity for action items: a missed commitment is worse than a redundant one.
 
 Output valid JSON only — no markdown fences, no commentary before or after the JSON."""
@@ -40,9 +46,17 @@ Return a JSON object with exactly these keys:
   "meeting_type": "sync|planning|1:1|brainstorm|standup|review|interview|voice_memo|other",
   "executive_summary": "3-5 sentences: purpose, outcome, and what matters most going forward",
   "topics": ["main agenda topics discussed, in order"],
+  "speaker_identities": [
+    {{
+      "speaker_id": "SPEAKER_XX — pyannote label from transcript",
+      "inferred_name": "best-guess real name, role, or descriptive label (e.g. 'Project lead')",
+      "confidence": "high|medium|low|unknown — high only with direct evidence (name stated or used)",
+      "rationale": "brief quote or context supporting the guess, or why unknown"
+    }}
+  ],
   "speakers": [
     {{
-      "speaker": "SPEAKER_XX, name, or role label",
+      "speaker": "inferred name or role; include (SPEAKER_XX) when labels exist",
       "summary": "what this person contributed, their stance, and any commitments they made",
       "key_quotes": ["verbatim quotes that capture decisions or strong positions, max 2"]
     }}
@@ -52,7 +66,7 @@ Return a JSON object with exactly these keys:
   ],
   "action_items": [
     {{
-      "who": "owner — SPEAKER label, name, or 'TBD' if truly unclear",
+      "who": "inferred_name from speaker_identities (e.g. 'Alex' or 'Project lead'); never raw SPEAKER_XX when a medium/high-confidence identity exists; 'TBD' only if truly unclear",
       "what": "specific, testable deliverable (not vague 'follow up')",
       "when": "deadline if stated, reasonably inferred ('end of week'), or null",
       "priority": "high|medium|low — high if blocking, time-sensitive, or executive-requested",
@@ -65,7 +79,7 @@ Return a JSON object with exactly these keys:
     {{
       "decision": "what was decided or agreed",
       "rationale": "why, if discussed",
-      "made_by": "who drove the decision, if clear"
+      "made_by": "inferred_name from speaker_identities, not raw SPEAKER_XX when identity is known"
     }}
   ],
   "open_questions": [
@@ -74,7 +88,7 @@ Return a JSON object with exactly these keys:
   "follow_ups": [
     {{
       "topic": "what needs revisiting in a future session",
-      "owner": "who should drive it, if clear",
+      "owner": "inferred_name from speaker_identities, not raw SPEAKER_XX when identity is known",
       "by_when": "timing if mentioned, else null",
       "context": "why this needs follow-up"
     }}
@@ -94,7 +108,13 @@ a clear deliverable yet.
 4. Open questions: things explicitly unanswered or punted ("we'll figure that out later").
 5. Priority: high = blocking release/deadline/executive ask; medium = important but not urgent; \
 low = nice-to-have.
-6. If this is a solo voice memo with no meeting structure, set meeting_type to "voice_memo" and still \
+6. Speaker identities: for every distinct [SPEAKER_XX] in the transcript, add one speaker_identities \
+entry. Prefer real names when someone says "I'm Alex" or "Hey Sarah"; use roles ("Interviewer", \
+"Client") when names are never mentioned; use unknown + SPEAKER_XX when evidence is insufficient.
+7. Action item owners: map each commitment to the speaking [SPEAKER_XX], look up that label in \
+speaker_identities, and set who to the inferred_name (e.g. "Husband/partner", not "SPEAKER_02"). \
+Apply the same mapping for decisions.made_by and follow_ups.owner.
+8. If this is a solo voice memo with no meeting structure, set meeting_type to "voice_memo" and still \
 extract any tasks, ideas, or decisions the speaker mentions.
 
 Transcript:
@@ -143,8 +163,8 @@ AUTO_USER_TEMPLATE = """Classify this transcript and produce structured output.
 
 Step 1: Set "mode" to "meeting" or "creative" based on content.
 Step 2: If meeting, include these keys:
-  title, date, meeting_type, executive_summary, topics, speakers, key_points, action_items,
-  decisions, open_questions, follow_ups, risks_blockers
+  title, date, meeting_type, executive_summary, topics, speaker_identities, speakers, key_points,
+  action_items, decisions, open_questions, follow_ups, risks_blockers
 Step 3: If creative, include these keys:
   title, date, creative_summary, themes, sparks, lyrics_draft, suno_style_prompt, suno_lyrics_prompt
 
@@ -163,7 +183,8 @@ def build_prompt(
     clipped = transcript[:max_chars]
     if mode == "meeting":
         speaker_context = (
-            "yes — use [SPEAKER_XX] labels for attribution"
+            "yes — infer real names or roles for each [SPEAKER_XX] from conversation evidence; "
+            "populate speaker_identities and use inferred names in notes when confident"
             if transcript_has_speaker_labels(clipped)
             else "no — speakers are not labeled; use roles or 'Unattributed'"
         )

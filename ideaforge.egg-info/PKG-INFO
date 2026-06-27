@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: ideaforge
-Version: 0.3.0
+Version: 0.4.0
 Summary: Local-first pipeline for USB voice recorders
 License: MIT
 Requires-Python: >=3.10
@@ -110,6 +110,9 @@ Grok is recommended for meeting notes — it excels at nuanced action item extra
 ideaforge [--source PATH | --auto-source] [options]
 
 Pipeline control:
+  --transcribe-only  Copy + transcribe only
+  --diarize-only     Diarize existing transcript (uses _segments.json cache)
+  --llm-only         Re-summarize existing transcript (seconds, not minutes)
   --no-copy          Skip copying to archive
   --no-transcribe    Skip transcription
   --no-llm           Skip LLM summarization
@@ -121,6 +124,8 @@ Transcription:
   --whisper-backend  auto | mlx | faster (default: auto — mlx on Apple Silicon)
   --whisper-model    tiny | base | small | medium | large-v3 (default: small)
   --diarize          Speaker diarization via pyannote (requires HF_TOKEN)
+  --min-speakers     pyannote hint (e.g. 2 for conversations)
+  --max-speakers     pyannote hint
   --whisper-device   cpu | cuda (faster-whisper only)
   --whisper-beam-size  Default: 1 (faster-whisper only)
 
@@ -156,7 +161,9 @@ After processing `R2026-06-27-07-43-11.WAV`:
 ├── R2026-06-27-07-43-11.WAV              # archived audio
 ├── R2026-06-27-07-43-11.txt              # transcript
 ├── R2026-06-27-07-43-11_whisper.json     # transcription metadata
-├── R2026-06-27-07-43-11_diarized.json    # speaker segments (if --diarize)
+├── R2026-06-27-07-43-11_segments.json    # timestamped segments (for --diarize-only)
+├── R2026-06-27-07-43-11_turns.json       # cached pyannote turns (skip re-diarize)
+├── R2026-06-27-07-43-11_diarized.json    # speaker-labeled segments (if --diarize)
 ├── R2026-06-27-07-43-11_summary.md       # formatted notes
 └── R2026-06-27-07-43-11_summary.json     # structured data
 ```
@@ -236,13 +243,27 @@ ideaforge/
 - **Dedup log** — `.processed_log.json` tracks processed file hashes locally
 - **Grok is opt-in** — requires explicit `--llm-backend grok` and `XAI_API_KEY`
 
+## Stage-only workflows
+
+```bash
+# Re-run Grok after tweaking prompts (~10 seconds)
+ideaforge --source ~/IdeaForge/2026-06-27 --llm-only --force
+
+# Diarize without re-transcribing (uses cached _turns.json on re-run)
+ideaforge --source ~/IdeaForge/2026-06-27 --diarize-only --no-copy --min-speakers 2
+
+# Transcribe only (fast mlx pass)
+ideaforge --auto-source --transcribe-only
+```
+
+Configure speaker names in `config.toml` under `[speakers.map]` to replace `SPEAKER_00` with real names in transcripts and Grok output.
+
 ## Roadmap
 
 - [ ] Creative mode refinements (chord progression hints, melody notation)
-- [ ] Batch re-processing of archived transcripts
-- [ ] Apple Silicon GPU acceleration (Metal/MPS)
+- [ ] MPS acceleration for pyannote diarization
 - [ ] Watch folder / launchd automation for plug-and-process
-- [ ] Export to Obsidian, Notion, or Apple Notes
+- [ ] Export action items to Apple Reminders / Obsidian
 
 ## Contributing
 

@@ -5,29 +5,14 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import Optional, Set
-
-try:
-    from tqdm import tqdm
-except ImportError:
-    tqdm = None  # type: ignore
+from typing import Optional
 
 from ideaforge import __version__
 from ideaforge.config import IdeaForgeConfig, load_dotenv
 from ideaforge.device import auto_detect_source, describe_device, find_recorder_mounts
-from ideaforge.ingest import (
-    archive_folder_for_file,
-    copy_file_safely,
-    compute_file_hash,
-    get_audio_files,
-    load_processed_log,
-    record_processed,
-    save_processed_log,
-    should_skip_by_hash,
-)
-from ideaforge.llm import process_transcript
-from ideaforge.backends import resolve_whisper_backend
-from ideaforge.transcribe import transcribe_audio
+from ideaforge.ingest import get_audio_files
+from ideaforge.pipeline import resolve_stages
+from ideaforge.runner import process_source
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -36,11 +21,12 @@ def build_parser() -> argparse.ArgumentParser:
         description="IdeaForge — Local-first pipeline for USB voice recorders",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""Examples:
-  ideaforge --auto-source                          # detect recorder, full pipeline
-  ideaforge --source "/Volumes/NO NAME" --list-only
+  ideaforge --auto-source                          # full pipeline
+  ideaforge --daemon                               # watch for USB recorder
+  ideaforge --source ~/IdeaForge/2026-06-27 --llm-only --force
+  ideaforge --source ~/IdeaForge/2026-06-27 --diarize-only --no-copy
+  ideaforge --auto-source --transcribe-only
   ideaforge --source /Volumes/Z29 --mode meeting --diarize
-  ideaforge --auto-source --mode meeting   # uses Grok automatically if XAI_API_KEY is set
-  ideaforge --source ~/recordings --no-copy --no-llm  # transcribe only
 """,
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -52,21 +38,45 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Auto-detect USB recorder under /Volumes",
     )
+    source.add_argument(
+        "--daemon",
+        action="store_true",
+        help="Run as background watcher — process when USB recorder is plugged in",
+    )
 
+    parser.add_argument("--archive", type=Path, default=None, help="Archive root")
+    parser.add_argument("--config", type=Path, default=None, help="Path to config.toml")
     parser.add_argument(
-        "--archive",
-        type=Path,
+        "--daemon-interval",
+        type=float,
         default=None,
-        help="Archive root (default: ~/IdeaForge)",
+        help="Seconds between device polls in daemon mode (default: 5)",
     )
     parser.add_argument(
-        "--config",
-        type=Path,
+        "--daemon-settle",
+        type=float,
         default=None,
-        help="Path to config.toml (default: ~/.config/ideaforge/config.toml)",
+        help="Seconds to wait after mount before processing (default: 5)",
     )
 
     # Pipeline stages
+    stage = parser.add_mutually_exclusive_group()
+    stage.add_argument(
+        "--transcribe-only",
+        action="store_true",
+        help="Copy + transcribe only (skip diarize and LLM)",
+    )
+    stage.add_argument(
+        "--diarize-only",
+        action="store_true",
+        help="Diarize existing transcript (requires _segments.json; skip transcribe)",
+    )
+    stage.add_argument(
+        "--llm-only",
+        action="store_true",
+        help="Summarize existing transcript only (skip copy, transcribe, diarize)",
+    )
+
     parser.add_argument("--no-copy", action="store_true", help="Skip copying to archive")
     parser.add_argument("--no-transcribe", action="store_true", help="Skip transcription")
     parser.add_argument("--no-llm", action="store_true", help="Skip LLM summarization")
@@ -74,7 +84,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--list-only", action="store_true", help="List audio files and exit")
     parser.add_argument("--detect", action="store_true", help="Show detected recorders and exit")
 
-    # Transcription
     parser.add_argument(
         "--whisper-model",
         default=None,
@@ -84,38 +93,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--whisper-backend",
         default=None,
         choices=["auto", "mlx", "faster"],
-        help="Transcription backend (default: auto — mlx on Apple Silicon)",
     )
-    parser.add_argument(
-        "--diarize",
-        action="store_true",
-        help="Enable speaker diarization (pyannote — no re-transcription)",
-    )
+    parser.add_argument("--diarize", action="store_true", help="Enable speaker diarization")
     parser.add_argument("--whisper-device", default=None, choices=["cpu", "cuda"])
     parser.add_argument("--whisper-compute-type", default=None)
     parser.add_argument("--whisper-beam-size", type=int, default=None)
+    parser.add_argument("--min-speakers", type=int, default=None, help="pyannote min speakers")
+    parser.add_argument("--max-speakers", type=int, default=None, help="pyannote max speakers")
 
-    # LLM
-    parser.add_argument(
-        "--llm-backend",
-        default=None,
-        choices=["auto", "ollama", "grok"],
-        help="LLM backend (default: auto — uses Grok when XAI_API_KEY is set)",
-    )
+    parser.add_argument("--llm-backend", default=None, choices=["auto", "ollama", "grok"])
     parser.add_argument("--ollama-model", default=None)
     parser.add_argument("--grok-model", default=None)
-    parser.add_argument(
-        "--mode",
-        default=None,
-        choices=["meeting", "creative", "auto"],
-        help="Processing mode (default: meeting)",
-    )
-    parser.add_argument(
-        "--output-format",
-        default=None,
-        choices=["md", "json", "both"],
-        help="Output format for LLM results (default: both)",
-    )
+    parser.add_argument("--mode", default=None, choices=["meeting", "creative", "auto"])
+    parser.add_argument("--output-format", default=None, choices=["md", "json", "both"])
 
     return parser
 
@@ -143,6 +133,10 @@ def resolve_config(args: argparse.Namespace) -> IdeaForgeConfig:
         cfg.whisper_compute_type = args.whisper_compute_type
     if args.diarize:
         cfg.diarize = True
+    if args.min_speakers is not None:
+        cfg.min_speakers = args.min_speakers
+    if args.max_speakers is not None:
+        cfg.max_speakers = args.max_speakers
     if args.llm_backend:
         cfg.llm_backend = args.llm_backend
     if args.ollama_model:
@@ -153,9 +147,12 @@ def resolve_config(args: argparse.Namespace) -> IdeaForgeConfig:
         cfg.mode = args.mode
     if args.output_format:
         cfg.output_format = args.output_format
+    if args.daemon_interval is not None:
+        cfg.daemon_poll_interval = args.daemon_interval
+    if args.daemon_settle is not None:
+        cfg.daemon_settle_seconds = args.daemon_settle
 
     cfg.llm_backend = cfg.resolve_llm_backend(cli_override=args.llm_backend)
-
     return cfg
 
 
@@ -191,9 +188,20 @@ def main(argv: Optional[list] = None) -> int:
             print()
         return 0
 
+    if args.daemon:
+        from ideaforge.daemon import run_daemon
+
+        return run_daemon(
+            cfg,
+            args,
+            poll_interval=args.daemon_interval,
+            settle_seconds=args.daemon_settle,
+        )
+
+    stages = resolve_stages(args, cfg)
     source = resolve_source(args)
     if source is None:
-        parser.error("One of --source or --auto-source is required (unless using --detect)")
+        parser.error("One of --source, --auto-source, or --daemon is required (unless using --detect)")
 
     archive = cfg.archive.expanduser().resolve()
 
@@ -201,73 +209,22 @@ def main(argv: Optional[list] = None) -> int:
         print(f"❌ Source not found: {source}")
         return 1
 
-    extensions: Set[str] = set(cfg.audio_extensions)
-    audio_files = get_audio_files(source, extensions, cfg.min_file_size_bytes)
-
-    print(f"🚀 IdeaForge v{__version__}")
-    print(f"   Source:  {source}")
-    print(f"   Archive: {archive}")
-    whisper_backend = resolve_whisper_backend(cfg.whisper_backend)
-    print(f"   Mode:    {cfg.mode} | LLM: {cfg.llm_backend} | Output: {cfg.output_format}")
-    print(f"   Whisper: {whisper_backend} ({cfg.whisper_model})" + (" + diarize" if cfg.diarize else ""))
-    print(f"   Found {len(audio_files)} audio file(s)")
-
     if args.list_only:
+        extensions = set(cfg.audio_extensions)
+        audio_files = get_audio_files(source, extensions, cfg.min_file_size_bytes)
+        print(f"Found {len(audio_files)} audio file(s) in {source}")
         for f in audio_files:
             size_mb = f.stat().st_size / (1024 * 1024)
             print(f"  {f.name}  ({size_mb:.1f} MB)")
         return 0
 
-    processed_log = load_processed_log(archive)
-
-    newly_processed = 0
-    iterator = tqdm(audio_files, desc="Processing") if tqdm else audio_files
-
-    for audio_file in iterator:
-        if should_skip_by_hash(audio_file, processed_log) and not args.force:
-            print(f"\n⏭️  Skipping {audio_file.name} (already processed)")
-            continue
-
-        date_folder = archive_folder_for_file(audio_file, archive)
-        print(f"\n📼 {audio_file.name} → {date_folder.name}/")
-
-        process_path = audio_file
-        if not args.no_copy:
-            process_path = copy_file_safely(audio_file, date_folder)
-            print("   📥 Copied to archive")
-
-        transcript_path = None
-        if not args.no_transcribe:
-            transcript_path = transcribe_audio(
-                process_path,
-                date_folder,
-                whisper_backend=cfg.whisper_backend,
-                whisper_model=cfg.whisper_model,
-                whisper_device=cfg.whisper_device,
-                whisper_compute_type=cfg.whisper_compute_type,
-                beam_size=cfg.whisper_beam_size,
-                force=args.force,
-                diarize=cfg.diarize,
-                hf_token=cfg.hf_token,
-            )
-
-        if not args.no_llm and transcript_path:
-            process_transcript(
-                transcript_path,
-                date_folder,
-                mode=cfg.mode,  # type: ignore[arg-type]
-                backend=cfg.llm_backend,
-                ollama_model=cfg.ollama_model,
-                grok_model=cfg.grok_model,
-                output_format=cfg.output_format,
-                force=args.force,
-            )
-
-        record_processed(processed_log, audio_file, date_folder)
-        newly_processed += 1
-
-    save_processed_log(archive, processed_log)
-    print(f"\n✅ IdeaForge complete — {newly_processed} file(s) processed")
+    process_source(
+        source,
+        archive,
+        cfg,
+        stages,
+        force=args.force,
+    )
     return 0
 
 
