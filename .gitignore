@@ -1,5 +1,6 @@
 __pycache__/
 .env
+.last-grok-session.json
 venv/
 *.pyc
 .DS_Store

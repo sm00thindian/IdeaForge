@@ -527,6 +527,18 @@ scripts/
 - **No telemetry** — no analytics, no cloud storage
 - **Dedup log** — `~/IdeaForge/.processed_log.json` tracks file hashes locally
 
+## Grok session continuity
+
+IdeaForge keeps a local, gitignored snapshot at `.last-grok-session.json` so you can resume long Grok/Cursor sessions.
+
+```bash
+./scripts/save-grok-session.sh
+grok --resume <session_id>   # id from .last-grok-session.json
+grok -c                      # continue most recent session in this repo
+```
+
+Project hooks in `.grok/hooks/` auto-save on session end. Trust the repo once with `/hooks-trust` (or `grok --trust`) so hooks run. Agents read `AGENTS.md` and `.grok/rules/session-continuity.md` at session start.
+
 ## Branding
 
 Logo and icon assets live in `ideaforge/assets/`. For GitHub, set the repository social preview image to `ideaforge/assets/social-preview.png` (Settings → General → Social preview).
