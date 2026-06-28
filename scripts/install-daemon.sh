@@ -27,7 +27,7 @@ ensure_ideaforge_venv "$ROOT"
 check_daemon_secrets "$ROOT" || true
 
 IDEAFORGE_BIN="$(resolve_ideaforge_bin "$ROOT")"
-ENV_XML="$(plist_env_xml_from_dotenv "$ROOT")"
+ENV_XML="$(plist_env_xml_for_secrets "$ROOT")"
 if [[ -z "$IDEAFORGE_BIN" ]]; then
   echo "ideaforge not found after venv setup." >&2
   exit 1

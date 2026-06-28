@@ -10,13 +10,7 @@ ROOT="$(ideaforge_project_root)"
 cd "$ROOT"
 
 for env_file in "$ROOT/.env" "$HOME/.config/ideaforge/.env"; do
-  if [[ -f "$env_file" ]]; then
-    set -a
-    # shellcheck disable=SC1090
-    source "$env_file"
-    set +a
-    break
-  fi
+  load_env_file_preserve_existing "$env_file"
 done
 
 IDEAFORGE_BIN="$(resolve_ideaforge_bin "$ROOT" || true)"

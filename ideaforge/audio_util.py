@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import wave
 from pathlib import Path
-from typing import Tuple
+from typing import Sequence, Tuple
 
 import numpy as np
 
@@ -68,3 +68,30 @@ def _gcd(a: int, b: int) -> int:
     while b:
         a, b = b, a % b
     return a
+
+
+def concat_wav_files(paths: Sequence[Path], output: Path) -> Path:
+    """Concatenate PCM WAV files with identical format. Returns output path."""
+    if not paths:
+        raise ValueError("concat_wav_files requires at least one input")
+    if len(paths) == 1:
+        return paths[0]
+
+    with wave.open(str(paths[0]), "rb") as first:
+        params = first.getparams()
+
+    frames: list[bytes] = []
+    for path in paths:
+        with wave.open(str(path), "rb") as wf:
+            if wf.getparams() != params:
+                raise ValueError(
+                    f"WAV format mismatch: {paths[0].name} vs {path.name}"
+                )
+            frames.append(wf.readframes(wf.getnframes()))
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with wave.open(str(output), "wb") as out:
+        out.setparams(params)
+        for chunk in frames:
+            out.writeframes(chunk)
+    return output

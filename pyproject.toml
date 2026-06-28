@@ -35,5 +35,8 @@ ideaforge = "ideaforge.cli:main"
 [tool.setuptools.packages.find]
 include = ["ideaforge*"]
 
+[tool.setuptools.package-data]
+ideaforge = ["assets/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

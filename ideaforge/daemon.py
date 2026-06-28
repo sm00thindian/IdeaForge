@@ -148,7 +148,10 @@ class RecorderWatcher:
         resolved_llm = self.cfg.resolve_llm_backend()
         print(f"   LLM: {resolved_llm} ({self.cfg.llm_backend} in config)")
         if resolved_llm == "ollama" and self.cfg.llm_backend in ("auto", "grok"):
-            print("   ⚠️  XAI_API_KEY not found — add it to .env and reinstall daemon")
+            print(
+                "   ⚠️  XAI_API_KEY not found — export it and run "
+                "./scripts/install-daemon.sh, or add to .env"
+            )
         print("   Press Ctrl+C to stop\n")
 
         while self._running:

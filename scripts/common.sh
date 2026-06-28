@@ -57,40 +57,126 @@ ensure_ideaforge_venv() {
   echo "Installed IdeaForge into venv: $venv/bin/ideaforge"
 }
 
-plist_env_xml_from_dotenv() {
-  local root="$1"
-  local env_file="$root/.env"
-  local key value
+strip_env_value() {
+  sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
+      -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//"
+}
+
+read_secret_from_file() {
+  local key="$1"
+  local env_file="$2"
+  local value=""
 
   if [[ ! -f "$env_file" ]]; then
+    return 1
+  fi
+
+  value="$(
+    grep -E "^${key}=" "$env_file" 2>/dev/null | head -1 | cut -d= -f2- | strip_env_value
+  )"
+  if [[ -n "$value" ]]; then
+    printf '%s' "$value"
+    return 0
+  fi
+  return 1
+}
+
+# Shell env > project .env > ~/.config/ideaforge/.env
+resolve_secret() {
+  local key="$1"
+  local root="$2"
+  local value=""
+  local env_file
+
+  value="${!key:-}"
+  if [[ -n "$value" ]]; then
+    printf '%s' "$value"
     return 0
   fi
 
+  for env_file in "$root/.env" "$HOME/.config/ideaforge/.env"; do
+    if value="$(read_secret_from_file "$key" "$env_file")"; then
+      printf '%s' "$value"
+      return 0
+    fi
+  done
+  return 1
+}
+
+secret_source_label() {
+  local key="$1"
+  local root="$2"
+  local env_file
+
+  if [[ -n "${!key:-}" ]]; then
+    printf 'shell environment'
+    return 0
+  fi
+  for env_file in "$root/.env" "$HOME/.config/ideaforge/.env"; do
+    if read_secret_from_file "$key" "$env_file" >/dev/null; then
+      printf '%s' "$env_file"
+      return 0
+    fi
+  done
+  return 1
+}
+
+plist_env_xml_for_secrets() {
+  local root="$1"
+  local key value
+
   for key in XAI_API_KEY HF_TOKEN ANTHROPIC_API_KEY; do
-    value="$(
-      grep -E "^${key}=" "$env_file" 2>/dev/null | head -1 | cut -d= -f2- \
-        | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
-              -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//"
-    )"
-    if [[ -n "$value" ]]; then
+    if value="$(resolve_secret "$key" "$root")"; then
       printf '        <key>%s</key>\n        <string>%s</string>\n' "$key" "$value"
     fi
   done
 }
 
+load_env_file_preserve_existing() {
+  local env_file="$1"
+  local line key value
+
+  if [[ ! -f "$env_file" ]]; then
+    return 0
+  fi
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+    if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
+      key="${BASH_REMATCH[1]}"
+      value="${BASH_REMATCH[2]}"
+      value="$(printf '%s' "$value" | strip_env_value)"
+      if [[ -z "${!key:-}" && -n "$value" ]]; then
+        export "$key=$value"
+      fi
+    fi
+  done < "$env_file"
+}
+
 check_daemon_secrets() {
   local root="$1"
-  local env_file="$root/.env"
   local missing=0
+  local source
 
-  if [[ ! -f "$env_file" ]] || ! grep -qE '^XAI_API_KEY=.+' "$env_file" 2>/dev/null; then
-    echo "⚠️  XAI_API_KEY not set in $env_file — Grok will not work (falls back to Ollama)"
+  if resolve_secret "XAI_API_KEY" "$root" >/dev/null; then
+    source="$(secret_source_label "XAI_API_KEY" "$root")"
+    echo "✓ XAI_API_KEY found ($source)"
+  else
+    echo "⚠️  XAI_API_KEY not found — Grok will not work (falls back to Ollama)"
+    echo "   Export it in your shell or add to $root/.env, then run ./scripts/install-daemon.sh"
     missing=1
   fi
-  if [[ ! -f "$env_file" ]] || ! grep -qE '^HF_TOKEN=.+' "$env_file" 2>/dev/null; then
-    echo "⚠️  HF_TOKEN not set in $env_file — diarization may fail"
+
+  if resolve_secret "HF_TOKEN" "$root" >/dev/null; then
+    source="$(secret_source_label "HF_TOKEN" "$root")"
+    echo "✓ HF_TOKEN found ($source)"
+  else
+    echo "⚠️  HF_TOKEN not found — diarization may fail"
+    echo "   Export it in your shell or add to $root/.env, then run ./scripts/install-daemon.sh"
     missing=1
   fi
+
   return "$missing"
 }
 

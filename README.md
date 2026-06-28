@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="ideaforge/assets/logo.svg" alt="IdeaForge" width="420">
+</p>
+
 # IdeaForge
 
 **Plug in your recorder. Get meeting notes.**
@@ -17,6 +21,7 @@ USB recorder plugged in
           ▼
 ┌───────────────────┐
 │  Copy to archive  │  ~/IdeaForge/YYYY-MM-DD/  (SHA-256 dedup)
+│  Merge chunks     │  consecutive splits → one session (e.g. 15 min max)
 │  Verify + purge   │  optional: delete from device after verified copy
 └─────────┬─────────┘
           ▼
@@ -57,7 +62,7 @@ USB recorder plugged in
 | Stage | What it does |
 |-------|-------------|
 | **Detect** | Auto-finds Z28/Z29 recorders under `/Volumes` by `RECORD/` folder + `R*.WAV` pattern |
-| **Ingest** | Copies to dated archive with SHA-256 dedup; skips files already processed |
+| **Ingest** | Copies to dated archive with SHA-256 dedup; merges consecutive recorder chunks into one session |
 | **Purge** | Daemon removes recordings from device after hash-verified local copy |
 | **Transcribe** | mlx-whisper on Apple Silicon (auto), faster-whisper fallback elsewhere |
 | **Diarize** | pyannote speaker labels — runs on existing transcript, no re-transcription |
@@ -93,13 +98,28 @@ pip install anthropic                  # only if using Claude backend
 
 ### 2. Secrets
 
-Create a `.env` file in the project root (daemon and CLI load it automatically):
+Set API keys in your shell **or** in a `.env` file (project root or `~/.config/ideaforge/.env`):
 
 ```bash
 # Pick one or both — Grok is used by default when XAI_API_KEY is set
-XAI_API_KEY=xai-...              # Grok (default with backend=auto)
+export XAI_API_KEY=xai-...       # Grok (default with backend=auto)
+export HF_TOKEN=hf_...           # pyannote diarization
+```
+
+Or in `.env`:
+
+```bash
+XAI_API_KEY=xai-...
 ANTHROPIC_API_KEY=sk-ant-...     # Claude (requires backend=claude)
-HF_TOKEN=hf_...                  # pyannote diarization
+HF_TOKEN=hf_...
+```
+
+**CLI / foreground** (`ideaforge --daemon`) picks up exported shell variables and loads `.env` without overwriting them.
+
+**LaunchAgent daemon** does *not* inherit your login-shell environment. When you run `./scripts/install-daemon.sh`, it snapshots keys from your current shell **or** `.env` into the LaunchAgent plist. If you only export keys in `~/.zshrc`, open a terminal where they are set and reinstall:
+
+```bash
+./scripts/install-daemon.sh
 ```
 
 Accept the pyannote license at [speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1) before using diarization.
@@ -122,6 +142,8 @@ grok_model = "grok-4.3"
 
 [processing]
 diarize = true
+merge_chunks = true       # join consecutive recorder splits into one session
+chunk_gap_seconds = 30    # max gap between chunk end and next start
 
 [diarization]
 min_speakers = 2
@@ -178,6 +200,8 @@ ideaforge --auto-source --list-only   # preview files without processing
 
 The daemon watches `/Volumes` and runs the full pipeline when exactly one recorder is detected.
 
+Re-run `./scripts/install-daemon.sh` after changing API keys — the installer reads from your shell environment and `.env` files and writes them into the LaunchAgent.
+
 ```bash
 # Install as macOS LaunchAgent (creates project venv + pip install if needed)
 ./scripts/install-daemon.sh
@@ -202,10 +226,13 @@ tail -f ~/Library/Logs/ideaforge/daemon.log
 
 1. Device detected → wait `settle_seconds` for mount to stabilize
 2. Copy new recordings to `~/IdeaForge/YYYY-MM-DD/`
-3. Hash-verify archive copy → delete from device (if `delete_after_copy = true`)
-4. Transcribe → diarize → LLM meeting notes (Grok by default)
-5. Skip files already in `.processed_log.json` (SHA-256 dedup)
-6. macOS notification with meeting title and action item summary (`notify = true`)
+3. Merge consecutive chunks into one session (when `merge_chunks = true`)
+4. Hash-verify archive copy → delete from device (if `delete_after_copy = true`)
+5. Transcribe → diarize → LLM meeting notes (Grok by default)
+6. Skip sessions already in `.processed_log.json` (SHA-256 dedup per chunk)
+7. macOS notification with meeting title and action item summary (`notify = true`)
+
+Notifications use the IdeaForge icon when [terminal-notifier](https://github.com/julienXX/terminal-notifier) is installed (`brew install terminal-notifier`). Without it, macOS falls back to the default Script Editor icon.
 
 Manual `ideaforge --auto-source` runs do **not** delete device files — only the daemon does.
 
@@ -322,7 +349,16 @@ After processing `R2026-06-27-07-43-11.WAV`:
 ├── R2026-06-27-07-43-11_turns.json       # cached pyannote turns
 ├── R2026-06-27-07-43-11_diarized.json    # speaker-labeled segments
 ├── R2026-06-27-07-43-11_summary.md       # formatted meeting notes
+├── R2026-06-27-07-43-11_merged.WAV       # temporary merge when session has multiple chunks
 └── R2026-06-27-07-43-11_summary.json     # structured data
+```
+
+**Chunked recordings:** Recorders with a max clip length (e.g. 15 minutes) split long sessions into consecutive `R*.WAV` files. IdeaForge detects chunks whose end-to-start gap is within `chunk_gap_seconds` (default 30s), merges them for transcription/diarization/LLM, and writes one transcript + summary per session (stem = first chunk). Individual chunk files are still archived separately.
+
+```toml
+[processing]
+merge_chunks = true
+chunk_gap_seconds = 30
 ```
 
 ### Meeting JSON (excerpt)
@@ -461,6 +497,7 @@ ideaforge/
 ├── runner.py       # Pipeline execution (shared by CLI and daemon)
 ├── pipeline.py     # Stage resolution (--llm-only, etc.)
 ├── ingest.py       # Copy, dedup, device purge
+├── chunks.py       # Detect and group consecutive recorder chunks
 ├── device.py       # Z28/Z29 detection
 ├── transcribe.py   # mlx-whisper / faster-whisper orchestration
 ├── diarize.py      # pyannote speaker labeling
@@ -470,12 +507,15 @@ ideaforge/
 ├── export.py       # Apple Reminders + Obsidian action item export
 ├── prompts.py      # Meeting and creative prompts
 ├── schema.py       # MeetingNotes, SpeakerIdentity, etc.
-└── config.py       # TOML + .env loading
+├── config.py       # TOML + .env loading
+├── notify.py       # macOS completion notifications
+├── branding.py     # Logo/icon asset paths
+└── assets/         # logo.svg, icon.png, social-preview.png
 
 scripts/
 ├── common.sh            # Venv setup + binary resolution
 ├── install-daemon.sh    # macOS LaunchAgent installer
-├── run-daemon.sh        # Daemon wrapper (loads .env, uses project venv)
+├── run-daemon.sh        # Daemon wrapper (loads .env without overriding plist env)
 ├── stop-daemon.sh       # Stop daemon without uninstalling
 └── uninstall-daemon.sh
 ```
@@ -487,12 +527,20 @@ scripts/
 - **No telemetry** — no analytics, no cloud storage
 - **Dedup log** — `~/IdeaForge/.processed_log.json` tracks file hashes locally
 
+## Branding
+
+Logo and icon assets live in `ideaforge/assets/`. For GitHub, set the repository social preview image to `ideaforge/assets/social-preview.png` (Settings → General → Social preview).
+
+Install [terminal-notifier](https://github.com/julienXX/terminal-notifier) (`brew install terminal-notifier`) so daemon notifications show the IdeaForge icon.
+
 ## Roadmap
 
 - [ ] Creative mode refinements (chord progression hints, melody notation)
 - [ ] MPS acceleration for pyannote diarization
 - [x] Watch folder / launchd automation for plug-and-process
 - [x] Export action items to Apple Reminders / Obsidian
+- [x] Merge chunked recorder sessions before transcribe/summarize
+- [x] IdeaForge logo and macOS notification icon
 
 ## Contributing
 

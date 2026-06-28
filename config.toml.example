@@ -22,6 +22,8 @@ mode = "meeting"         # meeting | creative | auto
 output_format = "both"   # md | json | both
 diarize = false
 min_file_size_bytes = 50000
+merge_chunks = true          # join consecutive recorder splits (e.g. 15 min max)
+chunk_gap_seconds = 30       # max gap between chunk end and next start
 
 [diarization]
 # Hugging Face token for pyannote models (or set HF_TOKEN env var)

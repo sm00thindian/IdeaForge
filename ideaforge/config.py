@@ -100,6 +100,8 @@ class IdeaForgeConfig:
     export_obsidian_vault: Optional[Path] = None
     export_obsidian_note: str = "IdeaForge/Action Items.md"
     min_file_size_bytes: int = 50_000
+    merge_chunks: bool = True
+    chunk_gap_seconds: float = 30.0
     hf_token: Optional[str] = None
     audio_extensions: List[str] = field(
         default_factory=lambda: [".wav", ".mp3", ".m4a", ".aac", ".ogg", ".flac", ".wma", ".opus"]
@@ -139,6 +141,10 @@ class IdeaForgeConfig:
             cfg.output_format = p.get("output_format", cfg.output_format)
             cfg.diarize = p.get("diarize", cfg.diarize)
             cfg.min_file_size_bytes = p.get("min_file_size_bytes", cfg.min_file_size_bytes)
+            if "merge_chunks" in p:
+                cfg.merge_chunks = bool(p["merge_chunks"])
+            if "chunk_gap_seconds" in p:
+                cfg.chunk_gap_seconds = float(p["chunk_gap_seconds"])
         if "diarization" in data:
             d = data["diarization"]
             cfg.hf_token = d.get("hf_token")

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import platform
+import shutil
 import subprocess
 from dataclasses import dataclass, field
-from typing import List, Optional
+from pathlib import Path
+from typing import List, Optional, Sequence
 
 
 @dataclass
@@ -62,6 +64,25 @@ def format_completion_notification(
     return title, subtitle, message
 
 
+def _terminal_notifier_paths() -> Sequence[str]:
+    candidates = [
+        shutil.which("terminal-notifier"),
+        "/opt/homebrew/bin/terminal-notifier",
+        "/usr/local/bin/terminal-notifier",
+    ]
+    return [path for path in candidates if path]
+
+
+def _notification_icon_path() -> Optional[Path]:
+    try:
+        from ideaforge.branding import notification_icon_path
+
+        icon = notification_icon_path()
+    except (ImportError, FileNotFoundError, ModuleNotFoundError):
+        return None
+    return icon if icon.is_file() else None
+
+
 def notify_mac(
     *,
     title: str,
@@ -72,6 +93,27 @@ def notify_mac(
     """Show a macOS notification. Returns True if dispatched."""
     if platform.system() != "Darwin":
         return False
+
+    icon = _notification_icon_path()
+    for notifier in _terminal_notifier_paths():
+        cmd = [
+            notifier,
+            "-title",
+            title,
+            "-message",
+            message,
+        ]
+        if subtitle:
+            cmd.extend(["-subtitle", subtitle])
+        if icon is not None:
+            cmd.extend(["-appIcon", str(icon)])
+        if sound:
+            cmd.extend(["-sound", "Glass"])
+        try:
+            subprocess.run(cmd, check=True, capture_output=True, text=True)
+            return True
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            continue
 
     lines = [
         f'display notification "{_escape_applescript(message)}" '

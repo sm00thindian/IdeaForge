@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+from typing import List
 
 from ideaforge.config import IdeaForgeConfig
 
@@ -81,5 +82,40 @@ def should_skip_file(
         if stages.diarize:
             return transcript_exists and diarized_exists
         return transcript_exists
+
+    return False
+
+
+def should_skip_group(
+    *,
+    stages: PipelineStages,
+    force: bool,
+    chunk_hashes: List[str],
+    processed_hashes: List[str],
+    transcript_exists: bool,
+    summary_exists: bool,
+    diarized_exists: bool,
+) -> bool:
+    """Decide whether to skip a recording session (one or more chunks)."""
+    if force:
+        return False
+
+    if stages.llm and not stages.transcribe and not stages.diarize:
+        return summary_exists
+
+    if stages.diarize and not stages.transcribe:
+        return diarized_exists and transcript_exists
+
+    all_chunks_seen = bool(chunk_hashes) and all(
+        file_hash in processed_hashes for file_hash in chunk_hashes
+    )
+
+    if stages.transcribe:
+        if stages.diarize:
+            outputs_ready = transcript_exists and diarized_exists
+        else:
+            outputs_ready = transcript_exists
+        if all_chunks_seen and outputs_ready:
+            return not stages.llm or summary_exists
 
     return False

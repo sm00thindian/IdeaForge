@@ -1,6 +1,7 @@
 """Tests for ingest and deduplication."""
 
 from ideaforge.ingest import (
+    archive_folder_for_file,
     compute_file_hash,
     copy_file_safely,
     find_archive_copy,
@@ -70,6 +71,6 @@ def test_find_archive_copy_by_name(tmp_path):
     src.parent.mkdir(parents=True)
     src.write_bytes(b"\x00" * 1000)
     archive_root = tmp_path / "IdeaForge"
-    copied = copy_file_safely(src, archive_root / "2026-06-27")
+    copied = copy_file_safely(src, archive_folder_for_file(src, archive_root))
     found = find_archive_copy(src, archive_root)
     assert found == copied

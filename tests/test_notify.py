@@ -46,12 +46,34 @@ def test_format_all_skipped():
     assert "Z29" in message
 
 
-def test_notify_mac_on_darwin():
+def test_notify_mac_uses_terminal_notifier_when_available(tmp_path):
+    icon = tmp_path / "icon-128.png"
+    icon.write_bytes(b"png")
+
     with patch("ideaforge.notify.platform.system", return_value="Darwin"), patch(
-        "ideaforge.notify.subprocess.run",
-    ) as run:
+        "ideaforge.notify._terminal_notifier_paths",
+        return_value=["/usr/local/bin/terminal-notifier"],
+    ), patch(
+        "ideaforge.notify._notification_icon_path",
+        return_value=icon,
+    ), patch("ideaforge.notify.subprocess.run") as run:
+        assert notify_mac(title="IdeaForge", subtitle="Done", message="3 action items")
+
+    run.assert_called_once()
+    cmd = run.call_args.args[0]
+    assert cmd[0] == "/usr/local/bin/terminal-notifier"
+    assert "-appIcon" in cmd
+    assert str(icon) in cmd
+
+
+def test_notify_mac_falls_back_to_osascript():
+    with patch("ideaforge.notify.platform.system", return_value="Darwin"), patch(
+        "ideaforge.notify._terminal_notifier_paths",
+        return_value=[],
+    ), patch("ideaforge.notify.subprocess.run") as run:
         assert notify_mac(title="IdeaForge", subtitle="Done", message="3 action items")
     run.assert_called_once()
+    assert run.call_args.args[0][0] == "osascript"
 
 
 def test_notify_process_complete_prints_confirmation(capsys):

@@ -3,7 +3,7 @@
 import argparse
 
 from ideaforge.config import IdeaForgeConfig
-from ideaforge.pipeline import resolve_stages, should_skip_file
+from ideaforge.pipeline import PipelineStages, resolve_stages, should_skip_file, should_skip_group
 
 
 def _args(**kwargs):
@@ -46,6 +46,32 @@ def test_should_skip_llm_only_when_summary_exists():
         stages=PipelineStages(copy=False, transcribe=False, diarize=False, llm=True),
         force=False,
         already_processed=False,
+        transcript_exists=True,
+        summary_exists=True,
+        diarized_exists=False,
+    )
+    assert skip
+
+
+def test_should_skip_group_when_new_chunk_arrives():
+    skip = should_skip_group(
+        stages=PipelineStages(copy=True, transcribe=True, diarize=False, llm=True),
+        force=False,
+        chunk_hashes=["hash-a", "hash-b"],
+        processed_hashes=["hash-a"],
+        transcript_exists=True,
+        summary_exists=True,
+        diarized_exists=False,
+    )
+    assert not skip
+
+
+def test_should_skip_group_when_all_chunks_done():
+    skip = should_skip_group(
+        stages=PipelineStages(copy=True, transcribe=True, diarize=False, llm=True),
+        force=False,
+        chunk_hashes=["hash-a", "hash-b"],
+        processed_hashes=["hash-a", "hash-b"],
         transcript_exists=True,
         summary_exists=True,
         diarized_exists=False,

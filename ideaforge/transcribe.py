@@ -59,9 +59,11 @@ def transcribe_audio(
     max_speakers: Optional[int] = None,
     speaker_map: Optional[Dict[str, str]] = None,
     force: bool = False,
+    output_stem: Optional[str] = None,
 ) -> Optional[Path]:
     """Transcribe audio and optionally diarize. Returns path to transcript (.txt)."""
-    paths = _paths_for_stem(output_dir, audio_path.stem)
+    stem = output_stem or audio_path.stem
+    paths = _paths_for_stem(output_dir, stem)
     transcript_path = paths["transcript"]
 
     if transcript_path.exists() and not force:
@@ -94,6 +96,7 @@ def transcribe_audio(
             max_speakers=max_speakers,
             speaker_map=speaker_map,
             force=force,
+            output_stem=stem,
         )
 
     mapping = speaker_map or {}
@@ -130,9 +133,11 @@ def diarize_existing(
     max_speakers: Optional[int] = None,
     speaker_map: Optional[Dict[str, str]] = None,
     force: bool = False,
+    output_stem: Optional[str] = None,
 ) -> Optional[Path]:
     """Diarize an existing transcription without re-transcribing."""
-    paths = _paths_for_stem(output_dir, audio_path.stem)
+    stem = output_stem or audio_path.stem
+    paths = _paths_for_stem(output_dir, stem)
     transcript_path = paths["transcript"]
 
     if paths["segments"].exists():
@@ -162,6 +167,7 @@ def diarize_existing(
         max_speakers=max_speakers,
         speaker_map=speaker_map,
         force=force,
+        output_stem=stem,
     )
 
     mapping = speaker_map or {}
@@ -181,8 +187,10 @@ def _apply_diarization(
     max_speakers: Optional[int],
     speaker_map: Optional[Dict[str, str]],
     force: bool,
+    output_stem: Optional[str] = None,
 ) -> List[TranscriptSegment]:
-    paths = _paths_for_stem(output_dir, audio_path.stem)
+    stem = output_stem or audio_path.stem
+    paths = _paths_for_stem(output_dir, stem)
 
     if not hf_token:
         print("    ⚠️  HF_TOKEN required for pyannote diarization")
