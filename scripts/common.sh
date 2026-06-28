@@ -57,6 +57,43 @@ ensure_ideaforge_venv() {
   echo "Installed IdeaForge into venv: $venv/bin/ideaforge"
 }
 
+plist_env_xml_from_dotenv() {
+  local root="$1"
+  local env_file="$root/.env"
+  local key value
+
+  if [[ ! -f "$env_file" ]]; then
+    return 0
+  fi
+
+  for key in XAI_API_KEY HF_TOKEN ANTHROPIC_API_KEY; do
+    value="$(
+      grep -E "^${key}=" "$env_file" 2>/dev/null | head -1 | cut -d= -f2- \
+        | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
+              -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//"
+    )"
+    if [[ -n "$value" ]]; then
+      printf '        <key>%s</key>\n        <string>%s</string>\n' "$key" "$value"
+    fi
+  done
+}
+
+check_daemon_secrets() {
+  local root="$1"
+  local env_file="$root/.env"
+  local missing=0
+
+  if [[ ! -f "$env_file" ]] || ! grep -qE '^XAI_API_KEY=.+' "$env_file" 2>/dev/null; then
+    echo "⚠️  XAI_API_KEY not set in $env_file — Grok will not work (falls back to Ollama)"
+    missing=1
+  fi
+  if [[ ! -f "$env_file" ]] || ! grep -qE '^HF_TOKEN=.+' "$env_file" 2>/dev/null; then
+    echo "⚠️  HF_TOKEN not set in $env_file — diarization may fail"
+    missing=1
+  fi
+  return "$missing"
+}
+
 launch_agent_domain() {
   printf 'gui/%s' "$(id -u)"
 }

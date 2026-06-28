@@ -63,7 +63,9 @@ def print_run_header(
     print(f"   Source:  {source}")
     print(f"   Archive: {archive}")
     print(f"   Pipeline: {stages.label}")
-    print(f"   Mode: {cfg.mode} | LLM: {cfg.llm_backend} | Output: {cfg.output_format}")
+    print(
+        f"   Mode: {cfg.mode} | LLM: {cfg.resolve_llm_backend()} | Output: {cfg.output_format}"
+    )
     if stages.transcribe:
         whisper_backend = resolve_whisper_backend(cfg.whisper_backend)
         print(f"   Whisper: {whisper_backend} ({cfg.whisper_model})")
@@ -204,6 +206,7 @@ def process_source(
                 whisper_device=cfg.whisper_device,
                 whisper_compute_type=cfg.whisper_compute_type,
                 beam_size=cfg.whisper_beam_size,
+                language=cfg.whisper_language,
                 diarize=stages.diarize,
                 hf_token=cfg.hf_token,
                 min_speakers=cfg.min_speakers,
@@ -232,7 +235,7 @@ def process_source(
                 transcript_path,
                 work_folder,
                 mode=cfg.mode,  # type: ignore[arg-type]
-                backend=cfg.llm_backend,
+                backend=cfg.resolve_llm_backend(),
                 ollama_model=cfg.ollama_model,
                 grok_model=cfg.grok_model,
                 claude_model=cfg.claude_model,

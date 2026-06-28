@@ -52,6 +52,7 @@ def transcribe_audio(
     whisper_device: str = "cpu",
     whisper_compute_type: str = "int8",
     beam_size: int = 1,
+    language: Optional[str] = None,
     diarize: bool = False,
     hf_token: Optional[str] = None,
     min_speakers: Optional[int] = None,
@@ -78,6 +79,7 @@ def transcribe_audio(
         device=whisper_device,
         compute_type=whisper_compute_type,
         beam_size=beam_size,
+        language=language,
     )
 
     _save_segments(paths["segments"], result.segments)

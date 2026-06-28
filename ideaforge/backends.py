@@ -55,24 +55,35 @@ def transcribe_with_backend(
     device: str = "cpu",
     compute_type: str = "int8",
     beam_size: int = 1,
+    language: Optional[str] = None,
 ) -> TranscriptionResult:
     if backend == "mlx":
-        return _transcribe_mlx(audio_path, model_size)
-    return _transcribe_faster(audio_path, model_size, device, compute_type, beam_size)
+        return _transcribe_mlx(audio_path, model_size, language=language)
+    return _transcribe_faster(
+        audio_path, model_size, device, compute_type, beam_size, language=language
+    )
 
 
-def _transcribe_mlx(audio_path, model_size: str) -> TranscriptionResult:
+def _transcribe_mlx(
+    audio_path,
+    model_size: str,
+    *,
+    language: Optional[str] = None,
+) -> TranscriptionResult:
     import mlx_whisper  # type: ignore
 
     repo = MLX_MODEL_REPOS.get(model_size, MLX_MODEL_REPOS["small"])
-    print(f"    ⚡ mlx-whisper ({model_size}) on Apple Silicon")
+    lang_hint = f", language={language}" if language else ""
+    print(f"    ⚡ mlx-whisper ({model_size}) on Apple Silicon{lang_hint}")
 
     audio, duration = load_audio_mono_16k(audio_path)
+    decode_options = {"language": language} if language else {}
     result = mlx_whisper.transcribe(
         audio,
         path_or_hf_repo=repo,
         verbose=False,
         word_timestamps=False,
+        **decode_options,
     )
 
     segments = _segments_from_mlx(result.get("segments", []))
@@ -91,14 +102,18 @@ def _transcribe_faster(
     device: str,
     compute_type: str,
     beam_size: int,
+    *,
+    language: Optional[str] = None,
 ) -> TranscriptionResult:
     from faster_whisper import WhisperModel  # type: ignore
 
-    print(f"    🎙️  faster-whisper ({model_size}, {device})")
+    lang_hint = f", language={language}" if language else ""
+    print(f"    🎙️  faster-whisper ({model_size}, {device}{lang_hint})")
     model = WhisperModel(model_size, device=device, compute_type=compute_type)
     raw_segments, info = model.transcribe(
         str(audio_path),
         beam_size=beam_size,
+        language=language,
         vad_filter=True,
         vad_parameters={"min_silence_duration_ms": 500},
     )

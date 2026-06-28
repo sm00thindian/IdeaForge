@@ -98,6 +98,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--whisper-device", default=None, choices=["cpu", "cuda"])
     parser.add_argument("--whisper-compute-type", default=None)
     parser.add_argument("--whisper-beam-size", type=int, default=None)
+    parser.add_argument(
+        "--whisper-language",
+        default=None,
+        help="Force transcription language (e.g. en); default auto-detect",
+    )
     parser.add_argument("--min-speakers", type=int, default=None, help="pyannote min speakers")
     parser.add_argument("--max-speakers", type=int, default=None, help="pyannote max speakers")
 
@@ -162,6 +167,8 @@ def resolve_config(args: argparse.Namespace) -> IdeaForgeConfig:
         cfg.whisper_model = args.whisper_model
     if args.whisper_beam_size is not None:
         cfg.whisper_beam_size = args.whisper_beam_size
+    if args.whisper_language:
+        cfg.whisper_language = args.whisper_language
     if args.whisper_device:
         cfg.whisper_device = args.whisper_device
     if args.whisper_compute_type:
@@ -189,7 +196,6 @@ def resolve_config(args: argparse.Namespace) -> IdeaForgeConfig:
     if args.daemon_settle is not None:
         cfg.daemon_settle_seconds = args.daemon_settle
 
-    cfg.llm_backend = cfg.resolve_llm_backend(cli_override=args.llm_backend)
     return cfg
 
 

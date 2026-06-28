@@ -15,6 +15,7 @@ model = "small"          # tiny | base | small | medium | large-v3
 device = "cpu"           # for faster-whisper fallback: cpu | cuda
 compute_type = "int8"
 beam_size = 1            # faster-whisper only; 1 is fastest
+language = "en"          # force English (omit for auto-detect)
 
 [processing]
 mode = "meeting"         # meeting | creative | auto

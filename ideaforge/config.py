@@ -83,6 +83,7 @@ class IdeaForgeConfig:
     whisper_device: str = "cpu"
     whisper_compute_type: str = "int8"
     whisper_beam_size: int = 1
+    whisper_language: Optional[str] = None
     mode: str = "meeting"
     output_format: str = "both"  # md | json | both
     diarize: bool = False
@@ -129,6 +130,9 @@ class IdeaForgeConfig:
             cfg.whisper_device = w.get("device", cfg.whisper_device)
             cfg.whisper_compute_type = w.get("compute_type", cfg.whisper_compute_type)
             cfg.whisper_beam_size = w.get("beam_size", cfg.whisper_beam_size)
+            lang = w.get("language")
+            if lang is not None:
+                cfg.whisper_language = str(lang) if lang else None
         if "processing" in data:
             p = data["processing"]
             cfg.mode = p.get("mode", cfg.mode)

@@ -24,8 +24,10 @@ if [[ ! -x "$RUN_SCRIPT" ]]; then
 fi
 
 ensure_ideaforge_venv "$ROOT"
+check_daemon_secrets "$ROOT" || true
 
 IDEAFORGE_BIN="$(resolve_ideaforge_bin "$ROOT")"
+ENV_XML="$(plist_env_xml_from_dotenv "$ROOT")"
 if [[ -z "$IDEAFORGE_BIN" ]]; then
   echo "ideaforge not found after venv setup." >&2
   exit 1
@@ -51,7 +53,7 @@ cat > "$PLIST_PATH" <<EOF
         <string>$IDEAFORGE_BIN</string>
         <key>PYTHONUNBUFFERED</key>
         <string>1</string>
-    </dict>
+$ENV_XML    </dict>
     <key>WorkingDirectory</key>
     <string>$ROOT</string>
     <key>RunAtLoad</key>

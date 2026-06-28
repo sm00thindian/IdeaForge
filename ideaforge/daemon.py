@@ -145,6 +145,10 @@ class RecorderWatcher:
         print(f"   Watching /Volumes every {self.poll_interval:.0f}s")
         print(f"   Archive: {self.cfg.archive.expanduser()}")
         print(f"   Pipeline: {self.stages.label}")
+        resolved_llm = self.cfg.resolve_llm_backend()
+        print(f"   LLM: {resolved_llm} ({self.cfg.llm_backend} in config)")
+        if resolved_llm == "ollama" and self.cfg.llm_backend in ("auto", "grok"):
+            print("   ⚠️  XAI_API_KEY not found — add it to .env and reinstall daemon")
         print("   Press Ctrl+C to stop\n")
 
         while self._running:
