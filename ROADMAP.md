@@ -51,7 +51,7 @@ Prioritized work after **0.5.0**. Items are grouped by tier (impact vs effort) a
 
 ### 0.6.0 targets (Tier 2)
 
-- [x] **Recorder clock helper** — `ideaforge device clock` — read `recset.txt`, show skew vs system time.
+- [x] **Recorder clock helper** — `ideaforge device clock` — read `recset.txt`, show skew vs system time; daemon syncs before ingest (`sync_device_clock`).
 - [x] **Config validation** — Fail fast on unknown keys / bad paths at daemon start (`--validate-config`).
 
 ### 0.6.1 patch targets

@@ -157,6 +157,8 @@ settle_seconds = 5
 delete_after_copy = true      # remove from device after verified copy
 unmount_after_ingest = true   # eject volume after ingest completes
 notify = true                 # macOS popup when pipeline finishes
+sync_device_clock = true      # fix recset.txt before ingest
+clock_skew_threshold_seconds = 60
 notify_on_failure = false     # opt-in alert when a session fails
 ```
 
@@ -229,11 +231,12 @@ tail -f ~/Library/Logs/ideaforge/daemon.log
 **What happens on plug-in:**
 
 1. Device detected → wait `settle_seconds` for mount to stabilize
-2. **Ingest first** — copy all new recordings to `~/IdeaForge/YYYY-MM-DD/`, hash-verify each copy, delete verified sources from device (`delete_after_copy = true`)
-3. **Unmount** — eject the volume when ingest succeeds and no recordings remain on device (`unmount_after_ingest = true`)
-4. **Process locally** — merge consecutive chunks, transcribe, diarize, LLM (runs on archive only; device is already unmounted)
-5. Skip sessions already in `.processed_log.json` (SHA-256 dedup per chunk)
-6. macOS notification with meeting title and action item summary (`notify = true`)
+2. **Clock sync** — read `recset.txt` and write system time when skew exceeds `clock_skew_threshold_seconds` (`sync_device_clock = true`, default). Existing on-device WAV filenames are unchanged; this fixes the recorder for future sessions.
+3. **Ingest** — copy all new recordings to `~/IdeaForge/YYYY-MM-DD/`, hash-verify each copy, delete verified sources from device (`delete_after_copy = true`)
+4. **Unmount** — eject the volume when ingest succeeds and no recordings remain on device (`unmount_after_ingest = true`)
+5. **Process locally** — merge consecutive chunks, transcribe, diarize, LLM (runs on archive only; device is already unmounted)
+6. Skip sessions already in `.processed_log.json` (SHA-256 dedup per chunk)
+7. macOS notification with meeting title and action item summary (`notify = true`)
 
 Manual `ideaforge --auto-source` still copies and processes in one pass (no auto-unmount).
 
@@ -317,6 +320,7 @@ Z28/Z29 devices store wall time in `recset.txt` (e.g. `TIME:14:24 2025/7/7`). Fi
 
 ```bash
 ideaforge device clock              # compare device vs system time
+ideaforge device clock --sync       # write system time when skew is large
 ideaforge --device-clock            # alias
 ideaforge --validate-config         # check config.toml before restarting daemon
 ```

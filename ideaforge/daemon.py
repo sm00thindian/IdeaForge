@@ -10,7 +10,13 @@ from pathlib import Path
 from typing import Callable, Dict, Optional, Set
 
 from ideaforge.config import IdeaForgeConfig
-from ideaforge.device import RecorderDevice, find_recorder_mounts, unmount_volume
+from ideaforge.device import (
+    RecorderDevice,
+    device_from_mount,
+    find_recorder_mounts,
+    sync_device_clock,
+    unmount_volume,
+)
 from ideaforge.ingest import (
     IngestResult,
     get_audio_files,
@@ -73,6 +79,34 @@ def maybe_unmount_device(
     return False
 
 
+def _maybe_sync_device_clock(
+    source: Path,
+    cfg: IdeaForgeConfig,
+    reporter: Optional[StatusReporter] = None,
+) -> None:
+    """Sync recset.txt before ingest so the device clock is correct for future recordings."""
+    if not cfg.daemon_sync_device_clock:
+        return
+
+    device = device_from_mount(source)
+    if device is None:
+        return
+
+    if reporter is not None:
+        reporter.touch(stage="Syncing clock")
+
+    result = sync_device_clock(
+        device,
+        max_skew_seconds=cfg.daemon_clock_skew_threshold_seconds,
+    )
+    if result.updated and result.previous_time and result.new_time:
+        prev = result.previous_time.strftime("%Y-%m-%d %H:%M:%S")
+        new = result.new_time.strftime("%Y-%m-%d %H:%M:%S")
+        print(f"   🕐 Device clock updated: {prev} → {new}")
+    elif result.reason == "failed to write recset.txt":
+        print(f"   ⚠️  Could not update device clock: {result.reason}")
+
+
 def run_device_ingest(
     source: Path,
     archive: Path,
@@ -83,6 +117,8 @@ def run_device_ingest(
     reporter: Optional[StatusReporter] = None,
 ) -> IngestResult:
     """Copy device recordings to archive, verify, optionally purge and unmount."""
+    _maybe_sync_device_clock(source, cfg, reporter)
+
     delete = (
         cfg.daemon_delete_after_copy
         if delete_after_copy is None

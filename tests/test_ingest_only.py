@@ -37,6 +37,32 @@ def test_run_device_ingest_unmounts_when_configured(tmp_path: Path):
     unmount.assert_called_once_with(mount)
 
 
+def test_run_device_ingest_syncs_clock_before_ingest(tmp_path: Path):
+    mount = _recorder(tmp_path)
+    (mount / "recset.txt").write_text("TIME:12:00 2020/1/1\n", encoding="utf-8")
+    archive = tmp_path / "IdeaForge"
+    cfg = IdeaForgeConfig(archive=archive, daemon_sync_device_clock=True)
+    ingest = IngestResult(files_verified=1)
+    calls: list[str] = []
+
+    def _sync(*_args, **_kwargs):
+        calls.append("sync")
+        from ideaforge.device import ClockSyncResult
+
+        return ClockSyncResult(updated=True, skipped=False, reason="test")
+
+    with (
+        patch("ideaforge.daemon.sync_device_clock", side_effect=_sync),
+        patch(
+            "ideaforge.daemon.ingest_device_recordings",
+            side_effect=lambda *_a, **_k: (calls.append("ingest"), ingest)[1],
+        ),
+    ):
+        run_device_ingest(mount, archive, cfg, unmount_after=False)
+
+    assert calls == ["sync", "ingest"]
+
+
 def test_run_device_ingest_skips_unmount_when_disabled(tmp_path: Path):
     mount = _recorder(tmp_path)
     archive = tmp_path / "IdeaForge"

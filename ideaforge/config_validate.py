@@ -52,6 +52,8 @@ SECTION_KEYS: Dict[str, Set[str]] = {
         "delete_after_copy",
         "unmount_after_ingest",
         "notify",
+        "sync_device_clock",
+        "clock_skew_threshold_seconds",
         "notify_on_failure",
     },
     "export": {
@@ -117,6 +119,8 @@ def validate_config_values(cfg: IdeaForgeConfig) -> List[str]:
         issues.append("daemon.poll_interval_seconds must be > 0")
     if cfg.daemon_settle_seconds < 0:
         issues.append("daemon.settle_seconds must be >= 0")
+    if cfg.daemon_clock_skew_threshold_seconds < 0:
+        issues.append("daemon.clock_skew_threshold_seconds must be >= 0")
     if cfg.max_parallel_sessions < 1:
         issues.append("processing.max_parallel_sessions must be >= 1")
     if cfg.min_file_size_bytes < 0:

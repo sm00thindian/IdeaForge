@@ -95,6 +95,8 @@ class IdeaForgeConfig:
     daemon_delete_after_copy: bool = True
     daemon_unmount_after_ingest: bool = True
     daemon_notify: bool = True
+    daemon_sync_device_clock: bool = True
+    daemon_clock_skew_threshold_seconds: float = 60.0
     notify_on_failure: bool = False
     export_reminders: bool = False
     export_reminders_list: str = "IdeaForge"
@@ -180,6 +182,12 @@ class IdeaForgeConfig:
                 cfg.daemon_unmount_after_ingest = bool(daemon["unmount_after_ingest"])
             if "notify" in daemon:
                 cfg.daemon_notify = bool(daemon["notify"])
+            if "sync_device_clock" in daemon:
+                cfg.daemon_sync_device_clock = bool(daemon["sync_device_clock"])
+            if "clock_skew_threshold_seconds" in daemon:
+                cfg.daemon_clock_skew_threshold_seconds = float(
+                    daemon["clock_skew_threshold_seconds"]
+                )
             if "notify_on_failure" in daemon:
                 cfg.notify_on_failure = bool(daemon["notify_on_failure"])
         if "export" in data:

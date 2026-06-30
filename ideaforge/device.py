@@ -181,6 +181,104 @@ def device_from_mount(mount: Path) -> Optional[RecorderDevice]:
     )
 
 
+def format_recset_time_line(dt: datetime) -> str:
+    """Format a TIME line for recset.txt (Z28 style, e.g. TIME:14:24 2025/7/7)."""
+    if dt.second:
+        time_part = f"{dt.hour}:{dt.minute:02d}:{dt.second:02d}"
+    else:
+        time_part = f"{dt.hour}:{dt.minute:02d}"
+    return f"TIME:{time_part} {dt.year}/{dt.month}/{dt.day}"
+
+
+def update_recset_time(settings_path: Path, new_time: datetime) -> bool:
+    """Replace or append the TIME: line in recset.txt; preserve other settings."""
+    new_line = format_recset_time_line(new_time)
+    try:
+        text = settings_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+
+    lines = text.splitlines()
+    out: List[str] = []
+    replaced = False
+    for line in lines:
+        if RECSET_TIME_PATTERN.search(line) or line.strip().upper().startswith("TIME:"):
+            if not replaced:
+                out.append(new_line)
+                replaced = True
+        else:
+            out.append(line)
+    if not replaced:
+        out.append(new_line)
+
+    try:
+        settings_path.write_text("\n".join(out) + "\n", encoding="utf-8")
+    except OSError:
+        return False
+    return True
+
+
+@dataclass(frozen=True)
+class ClockSyncResult:
+    updated: bool
+    skipped: bool
+    reason: str
+    info: Optional[DeviceClockInfo] = None
+    previous_time: Optional[datetime] = None
+    new_time: Optional[datetime] = None
+
+
+def sync_device_clock(
+    device: RecorderDevice,
+    *,
+    max_skew_seconds: float = 60.0,
+    force: bool = False,
+) -> ClockSyncResult:
+    """Update recset.txt when device clock skew exceeds the threshold."""
+    if device.settings_file is None:
+        return ClockSyncResult(
+            updated=False,
+            skipped=True,
+            reason="no recset.txt",
+        )
+
+    info = read_device_clock(device)
+    if info is None:
+        return ClockSyncResult(
+            updated=False,
+            skipped=True,
+            reason="could not parse TIME line",
+        )
+
+    if not force and abs(info.skew_seconds) <= max_skew_seconds:
+        return ClockSyncResult(
+            updated=False,
+            skipped=True,
+            reason=f"within {max_skew_seconds:g}s threshold",
+            info=info,
+        )
+
+    previous = info.device_time
+    new_time = datetime.now().replace(microsecond=0)
+    if not update_recset_time(device.settings_file, new_time):
+        return ClockSyncResult(
+            updated=False,
+            skipped=False,
+            reason="failed to write recset.txt",
+            info=info,
+            previous_time=previous,
+        )
+
+    return ClockSyncResult(
+        updated=True,
+        skipped=False,
+        reason=_format_skew(info.skew_seconds),
+        info=info,
+        previous_time=previous,
+        new_time=new_time,
+    )
+
+
 def read_device_clock(device: RecorderDevice) -> Optional[DeviceClockInfo]:
     """Read recset.txt clock and compare to local system time."""
     if device.settings_file is None:
@@ -226,8 +324,14 @@ def format_device_clock_report(info: DeviceClockInfo) -> str:
     return "\n".join(lines)
 
 
-def run_device_clock(source: Optional[Path] = None) -> int:
-    """CLI entry: show recorder clock skew vs system time."""
+def run_device_clock(
+    source: Optional[Path] = None,
+    *,
+    sync: bool = False,
+    force_sync: bool = False,
+    max_skew_seconds: float = 60.0,
+) -> int:
+    """CLI entry: show recorder clock skew vs system time; optionally sync recset.txt."""
     if source is not None:
         device = device_from_mount(source.expanduser().resolve())
         if device is None:
@@ -254,7 +358,27 @@ def run_device_clock(source: Optional[Path] = None) -> int:
         return 1
 
     print(format_device_clock_report(info))
-    return 0
+
+    if not sync:
+        return 0
+
+    sync_result = sync_device_clock(
+        device,
+        max_skew_seconds=max_skew_seconds,
+        force=force_sync,
+    )
+    if sync_result.updated and sync_result.new_time is not None:
+        print(
+            f"\n✓ Updated {device.settings_file.name} to "
+            f"{sync_result.new_time.strftime('%Y-%m-%d %H:%M:%S')}"
+        )
+        return 0
+    if sync_result.skipped:
+        print(f"\n   Clock sync skipped: {sync_result.reason}")
+        return 0
+
+    print(f"\n❌ Clock sync failed: {sync_result.reason}")
+    return 1
 
 
 def describe_device(device: RecorderDevice) -> str:

@@ -56,6 +56,16 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="Recorder mount path (default: auto-detect sole device)",
     )
+    device_clock_parser.add_argument(
+        "--sync",
+        action="store_true",
+        help="Write system time to recset.txt when skew exceeds threshold",
+    )
+    device_clock_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="With --sync: update even when within skew threshold",
+    )
 
     source = parser.add_mutually_exclusive_group()
     source.add_argument("--source", type=Path, help="Mounted recorder or folder path")
@@ -318,7 +328,11 @@ def main(argv: Optional[list] = None) -> int:
     if args.command == "device" and args.device_action == "clock":
         from ideaforge.device import run_device_clock
 
-        return run_device_clock(getattr(args, "source", None))
+        return run_device_clock(
+            getattr(args, "source", None),
+            sync=getattr(args, "sync", False),
+            force_sync=getattr(args, "force", False),
+        )
 
     if args.device_clock:
         from ideaforge.device import run_device_clock
