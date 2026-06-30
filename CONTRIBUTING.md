@@ -59,7 +59,7 @@ export HF_TOKEN="hf_..."
 ## Testing
 
 ```bash
-python -m pytest -q
+python -m pytest -q -m "not gpu"
 ```
 
 CI runs on Python 3.10–3.12 (see `.github/workflows/ci.yml`). GPU/diarization tests may skip when torch/pyannote are not installed.

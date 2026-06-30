@@ -2,6 +2,19 @@
 
 All notable changes to IdeaForge are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.7.1] - 2026-06-30
+
+### Added
+
+- **Multi-chunk merge integration test** — `group_recordings` + `chunks_are_continuation` + `concat_wav_files` duration regression.
+- **E2E smoke test** — Full copy → transcribe → summarize path with mocked ML; asserts `*_summary.md` / `*.txt` outputs (`pytest -m e2e`).
+- **Performance baselines** — [PERFORMANCE.md](PERFORMANCE.md) RTF table for M-series planning.
+- **GPU smoke workflow** — Manual `workflow_dispatch` job (`.github/workflows/gpu-smoke.yml`); default CI excludes `gpu`-marked tests.
+
+### Changed
+
+- CI runs `pytest -m "not gpu"` on Ubuntu (Python 3.10–3.12).
+
 ## [0.7.0] - 2026-06-30
 
 ### Added

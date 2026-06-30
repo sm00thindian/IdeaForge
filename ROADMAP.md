@@ -82,14 +82,14 @@ Prioritized work after **0.5.0**. Items are grouped by tier (impact vs effort) a
 
 ---
 
-## Tier 3 — Quality & scale (0.7.0+)
+## Tier 3 — Quality & scale (0.7.0+) — completed in 0.7.1
 
-| Item | Rationale |
-|------|-----------|
-| **E2E smoke test** | Fixture WAV → mock LLM → assert `notes.md` exists (CI without GPU optional job) |
-| **GPU CI job (optional)** | Self-hosted macOS runner or manual `workflow_dispatch` for transcribe/diarize |
-| **Integration test: multi-chunk merge** | Regression for `concat_wav_files` + `chunks_are_continuation` |
-| **Performance baselines** | Document RTF (real-time factor) per stage on M-series for planning |
+| Item | Status |
+|------|--------|
+| **Integration test: multi-chunk merge** | Done — `tests/test_chunk_merge_integration.py` |
+| **E2E smoke test** | Done — `tests/test_e2e_smoke.py` (mocked ML, runs in CI) |
+| **Performance baselines** | Done — [PERFORMANCE.md](PERFORMANCE.md) |
+| **GPU CI job (optional)** | Done — `.github/workflows/gpu-smoke.yml` (`workflow_dispatch`) |
 
 ---
 

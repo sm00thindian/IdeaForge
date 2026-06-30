@@ -707,7 +707,7 @@ Install [terminal-notifier](https://github.com/julienXX/terminal-notifier) (`bre
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for tiered milestones (0.5.1 → 1.0), tech debt, and the multi-recorder/device strategy. [CHANGELOG.md](CHANGELOG.md) lists what shipped in each release.
+See [ROADMAP.md](ROADMAP.md) for tiered milestones (0.5.1 → 1.0), tech debt, and the multi-recorder/device strategy. [CHANGELOG.md](CHANGELOG.md) lists what shipped in each release. [PERFORMANCE.md](PERFORMANCE.md) documents indicative RTF baselines for planning batch runs.
 
 ## Contributing
 

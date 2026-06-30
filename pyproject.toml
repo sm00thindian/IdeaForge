@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ideaforge"
-version = "0.7.0"
+version = "0.7.1"
 description = "Local-first pipeline for USB voice recorders"
 readme = "README.md"
 license = {text = "MIT"}
@@ -44,6 +44,10 @@ ideaforge = ["assets/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "e2e: end-to-end pipeline smoke (mocked ML, runs in default CI)",
+    "gpu: requires mlx-whisper on macOS (manual gpu-smoke workflow only)",
+]
 
 [tool.mypy]
 python_version = "3.10"

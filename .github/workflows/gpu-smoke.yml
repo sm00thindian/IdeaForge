@@ -1,0 +1,30 @@
+# Optional GPU smoke — manual dispatch on macOS (self-hosted or GitHub-hosted).
+# mlx-whisper requires Apple Silicon; use a self-hosted M-series runner for real transcribe tests.
+name: GPU Smoke (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner_label:
+        description: "Runner label (default macos-latest; use self-hosted label if configured)"
+        required: false
+        default: macos-latest
+
+jobs:
+  gpu-smoke:
+    runs-on: ${{ github.event.inputs.runner_label || 'macos-latest' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package with MLX extras
+        run: pip install -e ".[dev,mlx]"
+
+      - name: GPU-marked tests
+        env:
+          IDEAFORGE_GPU_CI: "1"
+        run: python -m pytest -q -m gpu
