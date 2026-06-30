@@ -74,8 +74,8 @@ def test_process_source_parallel_sessions(tmp_path: Path):
         return output_dir / f"{transcript_path.stem}_summary.md"
 
     with (
-        patch("ideaforge.runner.transcribe_audio", side_effect=fake_transcribe),
-        patch("ideaforge.runner.process_transcript", side_effect=fake_llm),
+        patch("ideaforge.session_worker.transcribe_audio", side_effect=fake_transcribe),
+        patch("ideaforge.session_worker.process_transcript", side_effect=fake_llm),
     ):
         result = process_source(
             source,

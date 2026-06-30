@@ -77,7 +77,7 @@ def _chunk_from_path(path: Path) -> RecordingChunk:
         start = datetime.fromtimestamp(path.stat().st_mtime)
     try:
         duration_seconds = get_audio_duration_seconds(path)
-    except (OSError, wave.Error):  # type: ignore[name-defined]
+    except (OSError, wave.Error):
         duration_seconds = 0.0
     return RecordingChunk(path=path, start=start, duration_seconds=duration_seconds)
 

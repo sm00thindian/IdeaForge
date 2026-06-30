@@ -218,7 +218,7 @@ ideaforge --daemon
 # Restart after code or config changes
 launchctl kickstart -k gui/$(id -u)/com.ideaforge.daemon
 
-# Watch logs
+# Watch logs (auto-rotated at 10 MiB — keeps daemon.log.1 … .log.3)
 tail -f ~/Library/Logs/ideaforge/daemon.log
 
 # Stop (keeps install — restart with install-daemon.sh)
@@ -643,7 +643,11 @@ Cached `_turns.json` and `_segments.json` make re-runs fast — use `--diarize-o
 ideaforge/
 ├── cli.py          # CLI entry point
 ├── daemon.py       # USB watcher — plug-and-process
-├── runner.py       # Pipeline execution + parallel session pool
+├── runner.py       # Pipeline orchestration (source → sessions)
+├── session_worker.py  # Per-session copy / transcribe / summarize
+├── session_pool.py    # Parallel session executor
+├── state_db.py        # Versioned .processed_log.json schema
+├── log_util.py        # Daemon log rotation
 ├── pipeline.py     # Stage resolution (--llm-only, etc.)
 ├── ingest.py       # Copy, dedup, device purge, derived-audio filter
 ├── chunks.py       # Detect and group consecutive recorder chunks

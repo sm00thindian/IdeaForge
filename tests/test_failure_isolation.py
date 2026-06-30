@@ -49,7 +49,7 @@ def test_one_failed_session_does_not_block_others(tmp_path: Path):
         transcript.write_text("ok" * 30, encoding="utf-8")
         return transcript
 
-    with patch("ideaforge.runner.transcribe_audio", side_effect=fake_transcribe):
+    with patch("ideaforge.session_worker.transcribe_audio", side_effect=fake_transcribe):
         result = process_source(
             source,
             archive,

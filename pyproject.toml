@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ideaforge"
-version = "0.6.2"
+version = "0.7.0"
 description = "Local-first pipeline for USB voice recorders"
 readme = "README.md"
 license = {text = "MIT"}
@@ -44,3 +44,16 @@ ideaforge = ["assets/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.10"
+files = [
+    "ideaforge/config.py",
+    "ideaforge/chunks.py",
+    "ideaforge/ingest.py",
+    "ideaforge/state_db.py",
+    "ideaforge/log_util.py",
+]
+warn_unused_ignores = true
+check_untyped_defs = true
+disable_error_code = ["import-untyped"]

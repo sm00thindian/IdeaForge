@@ -42,7 +42,7 @@ def test_process_source_merges_chunks_before_transcribe(tmp_path: Path):
     )
     stages = PipelineStages(copy=True, transcribe=True, diarize=False, llm=False)
 
-    with patch("ideaforge.runner.transcribe_audio") as transcribe:
+    with patch("ideaforge.session_worker.transcribe_audio") as transcribe:
         transcribe.return_value = archive / "2025-07-07" / "R2025-07-07-17-00-00.txt"
         result = process_source(
             source,

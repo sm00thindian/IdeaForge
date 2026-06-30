@@ -51,7 +51,7 @@ def test_failure_persisted_then_cleared_on_success(tmp_path: Path):
         transcript.write_text("ok" * 30, encoding="utf-8")
         return transcript
 
-    with patch("ideaforge.runner.transcribe_audio", side_effect=fail_once):
+    with patch("ideaforge.session_worker.transcribe_audio", side_effect=fail_once):
         first = process_source(
             source,
             archive,
@@ -65,7 +65,7 @@ def test_failure_persisted_then_cleared_on_success(tmp_path: Path):
     log = load_processed_log(archive)
     assert "R2026-06-30-08-00-00" in log["failures"]
 
-    with patch("ideaforge.runner.transcribe_audio", side_effect=fail_once):
+    with patch("ideaforge.session_worker.transcribe_audio", side_effect=fail_once):
         second = process_source(
             source,
             archive,
@@ -105,7 +105,7 @@ def test_retry_failed_only_processes_logged_sessions(tmp_path: Path):
     cfg = IdeaForgeConfig(archive=archive)
     stages = PipelineStages(copy=False, transcribe=True, diarize=False, llm=False)
 
-    with patch("ideaforge.runner.transcribe_audio") as transcribe:
+    with patch("ideaforge.session_worker.transcribe_audio") as transcribe:
         transcribe.return_value = date_folder / "R2026-06-30-08-00-00.txt"
         (date_folder / "R2026-06-30-08-00-00.txt").write_text("x" * 60, encoding="utf-8")
         result = process_source(

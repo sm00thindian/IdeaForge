@@ -19,4 +19,10 @@ if [[ -z "$IDEAFORGE_BIN" ]]; then
   exit 127
 fi
 
+# Rotate daemon logs when they exceed 10 MiB (keeps .log.1 … .log.3)
+PYTHON_BIN="$(dirname "$IDEAFORGE_BIN")/python"
+if [[ -x "$PYTHON_BIN" ]]; then
+  "$PYTHON_BIN" -c "from ideaforge.log_util import rotate_daemon_logs; rotate_daemon_logs()" 2>/dev/null || true
+fi
+
 exec "$IDEAFORGE_BIN" --daemon "$@"

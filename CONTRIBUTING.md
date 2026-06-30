@@ -32,7 +32,10 @@ export HF_TOKEN="hf_..."
 |--------|---------------|
 | `ideaforge/cli.py` | CLI entry point |
 | `ideaforge/daemon.py` | USB watcher, LaunchAgent integration |
-| `ideaforge/runner.py` | Pipeline execution, parallel session pool |
+| `ideaforge/runner.py` | Pipeline orchestration |
+| `ideaforge/session_worker.py` | Per-session pipeline worker |
+| `ideaforge/session_pool.py` | Parallel session pool |
+| `ideaforge/state_db.py` | Versioned `.processed_log.json` |
 | `ideaforge/pipeline.py` | Stage flags (`--llm-only`, etc.) |
 | `ideaforge/ingest.py` | File discovery, dedup, archive copy, purge |
 | `ideaforge/chunks.py` | Recorder chunk detection and merge rules |

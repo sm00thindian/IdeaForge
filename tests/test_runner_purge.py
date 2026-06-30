@@ -27,7 +27,7 @@ def test_daemon_purge_removes_file_after_copy(tmp_path: Path):
     cfg.archive = archive
     stages = PipelineStages(copy=True, transcribe=False, diarize=False, llm=False)
 
-    with patch("ideaforge.runner.is_path_on_recorder", return_value=True):
+    with patch("ideaforge.session_worker.is_path_on_recorder", return_value=True):
         result = process_source(
             volume,
             archive,
@@ -52,7 +52,7 @@ def test_manual_run_keeps_device_files_by_default(tmp_path: Path):
     cfg.archive = archive
     stages = PipelineStages(copy=True, transcribe=False, diarize=False, llm=False)
 
-    with patch("ideaforge.runner.is_path_on_recorder", return_value=True):
+    with patch("ideaforge.session_worker.is_path_on_recorder", return_value=True):
         process_source(
             volume,
             archive,

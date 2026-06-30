@@ -2,6 +2,19 @@
 
 All notable changes to IdeaForge are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.7.0] - 2026-06-30
+
+### Added
+
+- **Versioned state DB** — `state_db.py` versions `.processed_log.json` (`schema_version`); migrates legacy logs on load.
+- **Session worker split** — `session_worker.py` (per-session pipeline) and `session_pool.py` (parallel executor); `runner.py` is orchestration only.
+- **Daemon log rotation** — `run-daemon.sh` rotates `daemon.log` / `daemon.err.log` at 10 MiB (keeps three backups).
+- **Mypy subset** — `[tool.mypy]` config for `config.py`, `chunks.py`, `ingest.py`, `state_db.py`, `log_util.py`.
+
+### Changed
+
+- `Stage` / `StepId` / `StepLabel` constants (from 0.6.2) now used across the refactored session modules.
+
 ## [0.6.2] - 2026-06-30
 
 ### Changed

@@ -72,13 +72,13 @@ Prioritized work after **0.5.0**. Items are grouped by tier (impact vs effort) a
 | **Archive layout docs** | Document `~/IdeaForge/YYYY-MM-DD/` tree in README (done in 0.6.1) |
 | **LaunchAgent reload note** | Single doc section: when to `launchctl kickstart` after config/env changes (done in 0.6.1) |
 
-### Tech debt (0.6.0)
+### Tech debt (0.6.0) — completed in 0.7.0
 
 - [x] **Centralize stage constants** — `Stage`, `StepId`, `StepLabel` in `status.py` (0.6.2).
-- [ ] **State DB migrations** — Version schema; avoid silent breakage when adding columns.
-- [ ] **Reduce `runner.py` surface** — Extract session worker + pool into `pipeline.py` or `session_worker.py`.
-- [ ] **Type hints pass** — `config.py`, `ingest.py`, `chunks.py` for mypy-ready subset.
-- [ ] **Log rotation** — `daemon.log` growth; newsyslog or built-in rotate.
+- [x] **State DB migrations** — `state_db.py` versions `.processed_log.json` (0.7.0).
+- [x] **Reduce `runner.py` surface** — `session_worker.py` + `session_pool.py` (0.7.0).
+- [x] **Type hints pass** — `config.py`, `ingest.py`, `chunks.py` + mypy config (0.7.0).
+- [x] **Log rotation** — Built-in rotate in `run-daemon.sh` via `log_util.py` (0.7.0).
 
 ---
 

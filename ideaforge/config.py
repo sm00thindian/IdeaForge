@@ -5,7 +5,12 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
+
+LlmBackend = Literal["auto", "ollama", "grok", "claude"]
+WhisperBackend = Literal["auto", "mlx", "faster"]
+ProcessingMode = Literal["meeting", "creative", "auto"]
+OutputFormat = Literal["md", "json", "both"]
 
 _PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 
@@ -219,7 +224,7 @@ class IdeaForgeConfig:
         if self.hf_token:
             _hf_login(self.hf_token.strip())
 
-    def resolve_llm_backend(self, cli_override: Optional[str] = None) -> str:
+    def resolve_llm_backend(self, cli_override: Optional[str] = None) -> LlmBackend:
         """Pick LLM backend: CLI flag > config > auto-detect XAI_API_KEY."""
         if cli_override:
             backend = cli_override

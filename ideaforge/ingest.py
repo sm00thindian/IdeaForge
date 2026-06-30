@@ -8,7 +8,18 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set, TYPE_CHECKING
+from typing import List, Optional, Set, TYPE_CHECKING
+
+from ideaforge.state_db import (
+    ProcessedLog,
+    ProcessedLogLike,
+    clear_session_failure,
+    failed_session_stems,
+    load_processed_log,
+    normalize_processed_log,
+    record_session_failure,
+    save_processed_log,
+)
 
 if TYPE_CHECKING:
     from ideaforge.config import IdeaForgeConfig
@@ -46,40 +57,7 @@ def get_audio_files(
     return sorted(valid, key=lambda p: p.stat().st_mtime)
 
 
-def _empty_processed_log() -> Dict[str, Any]:
-    return {"hashes": [], "files": {}, "failures": {}}
-
-
-def normalize_processed_log(log: Dict[str, Any]) -> Dict[str, Any]:
-    """Ensure expected keys exist after load or partial writes."""
-    if "hashes" not in log:
-        log["hashes"] = []
-    if "files" not in log:
-        log["files"] = {}
-    if "failures" not in log:
-        log["failures"] = {}
-    return log
-
-
-def load_processed_log(archive: Path) -> Dict[str, Any]:
-    log_path = archive / ".processed_log.json"
-    if log_path.exists():
-        try:
-            return normalize_processed_log(
-                json.loads(log_path.read_text(encoding="utf-8"))
-            )
-        except (json.JSONDecodeError, OSError):
-            pass
-    return _empty_processed_log()
-
-
-def save_processed_log(archive: Path, log: Dict[str, Any]) -> None:
-    log_path = archive / ".processed_log.json"
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    log_path.write_text(json.dumps(log, indent=2, ensure_ascii=False), encoding="utf-8")
-
-
-def should_skip_by_hash(file_path: Path, processed_log: Dict[str, Any]) -> bool:
+def should_skip_by_hash(file_path: Path, processed_log: ProcessedLogLike) -> bool:
     try:
         return compute_file_hash(file_path) in processed_log.get("hashes", [])
     except OSError:
@@ -115,7 +93,7 @@ def verify_copy(src: Path, archive_copy: Path) -> bool:
 def find_archive_copy(
     source: Path,
     archive_root: Path,
-    processed_log: Optional[Dict[str, Any]] = None,
+    processed_log: Optional[ProcessedLogLike] = None,
 ) -> Optional[Path]:
     """Locate a local archive file that matches the source recording."""
     try:
@@ -253,39 +231,8 @@ def ingest_device_recordings(
     return result
 
 
-def record_session_failure(
-    log: Dict[str, Any],
-    *,
-    session_stem: str,
-    archive_folder: Path,
-    archive_files: List[Path],
-    chunk_hashes: List[str],
-    error: str,
-    pipeline: str,
-) -> None:
-    normalize_processed_log(log)
-    log["failures"][session_stem] = {
-        "session_stem": session_stem,
-        "archive_folder": str(archive_folder),
-        "archive_files": [str(path) for path in archive_files],
-        "chunk_hashes": chunk_hashes,
-        "error": error,
-        "pipeline": pipeline,
-        "failed_at": datetime.now().isoformat(timespec="seconds"),
-    }
-
-
-def clear_session_failure(log: Dict[str, Any], session_stem: str) -> None:
-    normalize_processed_log(log)
-    log["failures"].pop(session_stem, None)
-
-
-def failed_session_stems(log: Dict[str, Any]) -> Set[str]:
-    return set(normalize_processed_log(log).get("failures", {}).keys())
-
-
 def archive_paths_for_failed_sessions(
-    log: Dict[str, Any],
+    log: ProcessedLogLike,
     *,
     min_size_bytes: int = 50_000,
 ) -> List[Path]:
@@ -312,7 +259,7 @@ def archive_paths_for_failed_sessions(
 
 def expand_scope_files(
     scope_files: Optional[List[Path]],
-    log: Dict[str, Any],
+    log: ProcessedLogLike,
     *,
     min_size_bytes: int = 50_000,
     include_failures: bool = True,
@@ -331,17 +278,18 @@ def expand_scope_files(
 
 
 def record_processed(
-    log: Dict[str, Any],
+    log: ProcessedLogLike,
     source_file: Path,
     archive_path: Path,
     *,
     archive_file: Optional[Path] = None,
     file_hash: Optional[str] = None,
 ) -> None:
+    normalized = normalize_processed_log(log)
     file_hash = file_hash or compute_file_hash(source_file)
-    if file_hash not in log["hashes"]:
-        log["hashes"].append(file_hash)
-    log["files"][file_hash] = {
+    if file_hash not in normalized["hashes"]:
+        normalized["hashes"].append(file_hash)
+    normalized["files"][file_hash] = {
         "source": str(source_file),
         "archive": str(archive_file or archive_path),
         "processed_at": datetime.now().isoformat(timespec="seconds"),

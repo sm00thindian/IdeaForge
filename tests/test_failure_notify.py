@@ -50,7 +50,7 @@ def test_runner_notifies_on_failure_when_enabled(tmp_path):
 
     with (
         patch(
-            "ideaforge.runner.transcribe_audio",
+            "ideaforge.session_worker.transcribe_audio",
             side_effect=RuntimeError("gpu oom"),
         ),
         patch("ideaforge.runner.notify_session_failure") as notify_failure,
