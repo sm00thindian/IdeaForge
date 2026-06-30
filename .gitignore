@@ -7,3 +7,4 @@ venv/
 *.jsonl
 models/          # Whisper/Ollama caches if you want to exclude
 IdeaForge/.processed_log.json  # optional - or keep for tracking
+.cursor/
