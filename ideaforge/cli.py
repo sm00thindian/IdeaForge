@@ -34,6 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
   ideaforge --auto-source --ingest-only
   ideaforge --source ~/IdeaForge --retry-failed
   ideaforge --status
+  ideaforge --status --watch
   ideaforge --source /Volumes/Z29 --mode meeting --diarize
 """,
     )
@@ -115,6 +116,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--status-json",
         action="store_true",
         help="Emit --status output as JSON (for scripting)",
+    )
+    parser.add_argument(
+        "--watch",
+        action="store_true",
+        help="With --status, refresh periodically until Ctrl+C",
+    )
+    parser.add_argument(
+        "--watch-interval",
+        type=float,
+        default=2.0,
+        help="Seconds between --status --watch refreshes (default: 2)",
     )
 
     parser.add_argument(
@@ -264,10 +276,20 @@ def main(argv: Optional[list] = None) -> int:
             print()
         return 0
 
-    if args.status or args.status_json:
-        from ideaforge.health import print_status_report
+    if args.watch and not (args.status or args.status_json):
+        parser.error("--watch requires --status or --status-json")
 
-        print_status_report(cfg, as_json=args.status_json)
+    if args.status or args.status_json:
+        from ideaforge.health import print_status_report, watch_status_report
+
+        if args.watch:
+            watch_status_report(
+                cfg,
+                interval=args.watch_interval,
+                as_json=args.status_json,
+            )
+        else:
+            print_status_report(cfg, as_json=args.status_json)
         return 0
 
     if args.daemon:

@@ -41,8 +41,13 @@ Prioritized work after **0.5.0**. Items are grouped by tier (impact vs effort) a
 
 ### 0.5.4 patch targets
 
-- [ ] **Menubar “Open Log” opens Terminal tail** — `tail -f` in Terminal.app instead of log file in editor.
-- [ ] **Status watch mode** — `ideaforge --status --watch` refreshes every N seconds.
+- [x] **Menubar “Open Log” opens Terminal tail** — `tail -f` in Terminal.app instead of log file in editor.
+- [x] **Status watch mode** — `ideaforge --status --watch` refreshes every N seconds.
+
+### 0.5.5 patch targets
+
+- [ ] **`ideaforge reprocess`** — Re-run pipeline for session dir or date range (Tier 2 carry-over).
+- [ ] **Menubar pending failures badge** — Show failure count in menu when `failures` log is non-empty.
 
 ---
 

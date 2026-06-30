@@ -1,6 +1,7 @@
 """Tests for ideaforge --status health reporting."""
 
 import json
+import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
@@ -11,6 +12,8 @@ from ideaforge.health import (
     check_menubar_health,
     collect_status_snapshot,
     format_status_report,
+    open_daemon_log_tail,
+    watch_status_report,
 )
 from ideaforge.ingest import load_processed_log, record_session_failure, save_processed_log
 from ideaforge.status import StatusReporter, STATE_WATCHING
@@ -91,6 +94,60 @@ def test_service_health_status_line():
     assert ServiceHealth("x", False, False).status_line == "not installed"
     assert ServiceHealth("x", True, True, pid=99).status_line == "running (pid 99)"
     assert ServiceHealth("x", True, False).status_line == "stopped (LaunchAgent installed)"
+
+
+def test_open_daemon_log_tail_uses_terminal_on_darwin(tmp_path: Path):
+    log_path = tmp_path / "daemon.log"
+    with (
+        patch("ideaforge.health._is_darwin", return_value=True),
+        patch("ideaforge.health.subprocess.run") as run,
+    ):
+        assert open_daemon_log_tail(log_path) is True
+
+    run.assert_called_once()
+    cmd = run.call_args.args[0]
+    assert cmd[0] == "osascript"
+    assert "Terminal" in run.call_args.args[0][2]
+    assert "tail -f" in run.call_args.args[0][2]
+    assert str(log_path) in run.call_args.args[0][2]
+
+
+def test_open_daemon_log_tail_falls_back_on_failure(tmp_path: Path):
+    log_path = tmp_path / "daemon.log"
+
+    def fake_run(cmd, **kwargs):
+        if cmd[0] == "osascript":
+            raise subprocess.CalledProcessError(1, "osascript")
+        return subprocess.CompletedProcess(cmd, 0)
+
+    with (
+        patch("ideaforge.health._is_darwin", return_value=True),
+        patch("ideaforge.health.subprocess.run", side_effect=fake_run) as run,
+    ):
+        assert open_daemon_log_tail(log_path) is False
+
+    assert run.call_count == 2
+    assert run.call_args_list[1].args[0] == ["open", str(log_path.resolve())]
+
+
+def test_watch_status_report_refreshes_once_before_stop():
+    cfg = IdeaForgeConfig()
+    calls: list[int] = []
+
+    def fake_print(*_args, **_kwargs) -> None:
+        calls.append(1)
+
+    with (
+        patch("ideaforge.health.print_status_report", side_effect=fake_print),
+        patch("ideaforge.health.time.sleep", side_effect=KeyboardInterrupt),
+        patch("ideaforge.health.sys.stdout.isatty", return_value=False),
+    ):
+        try:
+            watch_status_report(cfg, interval=0.1)
+        except KeyboardInterrupt:
+            pass
+
+    assert len(calls) == 1
 
 
 def test_check_daemon_health_uses_pgrep_on_darwin():

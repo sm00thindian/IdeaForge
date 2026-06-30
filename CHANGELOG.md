@@ -2,6 +2,13 @@
 
 All notable changes to IdeaForge are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.4] - 2026-06-30
+
+### Added
+
+- **`ideaforge --status --watch`** — Live-updating status view (default 2s interval; `--watch-interval` to customize).
+- **Menubar Open Log** — Opens Terminal.app with `tail -f` on the daemon log (falls back to opening the file).
+
 ## [0.5.3] - 2026-06-30
 
 ### Added
@@ -66,6 +73,7 @@ All notable changes to IdeaForge are documented here. Format follows [Keep a Cha
 
 Prior releases were not changelogged in-repo. See git history for daemon, Grok/Claude/Ollama backends, faster-whisper + pyannote diarization, and USB ingest.
 
+[0.5.4]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.5.4
 [0.5.3]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.5.3
 [0.5.2]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.5.2
 [0.5.1]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.5.1

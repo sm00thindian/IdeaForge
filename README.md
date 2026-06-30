@@ -249,8 +249,12 @@ The daemon also picks up pending failures automatically on the next plug-in (eve
 
 ```bash
 ideaforge --status
-ideaforge --status-json    # for scripting
+ideaforge --status --watch                    # live refresh (Ctrl+C to stop)
+ideaforge --status --watch --watch-interval 5
+ideaforge --status-json                       # for scripting
 ```
+
+The menu bar **Open Log** item opens Terminal with `tail -f` on the daemon log.
 
 **Ingest only** (test copy/verify/purge without ML):
 

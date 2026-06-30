@@ -5,7 +5,11 @@ from __future__ import annotations
 import json
 import os
 import platform
+import shlex
+import signal
 import subprocess
+import sys
+import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -253,3 +257,58 @@ def print_status_report(cfg: IdeaForgeConfig, *, as_json: bool = False) -> None:
         print(json.dumps(collect_status_snapshot(cfg), indent=2, ensure_ascii=False))
         return
     print(format_status_report(cfg))
+
+
+def open_daemon_log_tail(log_path: Optional[Path] = None) -> bool:
+    """Open Terminal.app tailing the daemon log (macOS). Falls back to `open` elsewhere."""
+    path = (log_path or DAEMON_LOG_PATH).expanduser().resolve()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.is_file():
+        path.touch()
+
+    if not _is_darwin():
+        subprocess.run(["open", str(path)], check=False)
+        return False
+
+    shell_cmd = f"tail -f {shlex.quote(str(path))}"
+    escaped = shell_cmd.replace("\\", "\\\\").replace('"', '\\"')
+    script = (
+        'tell application "Terminal" to activate\n'
+        f'tell application "Terminal" to do script "{escaped}"'
+    )
+    try:
+        subprocess.run(
+            ["osascript", "-e", script],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return True
+    except (OSError, subprocess.CalledProcessError):
+        subprocess.run(["open", str(path)], check=False)
+        return False
+
+
+def watch_status_report(
+    cfg: IdeaForgeConfig,
+    *,
+    interval: float = 2.0,
+    as_json: bool = False,
+) -> None:
+    """Refresh status output until SIGINT/SIGTERM."""
+    stop = False
+
+    def _handle(_signum, _frame) -> None:
+        nonlocal stop
+        stop = True
+
+    signal.signal(signal.SIGINT, _handle)
+    signal.signal(signal.SIGTERM, _handle)
+
+    while not stop:
+        if sys.stdout.isatty():
+            print("\033[2J\033[H", end="", flush=True)
+        print_status_report(cfg, as_json=as_json)
+        if stop:
+            break
+        time.sleep(max(interval, 0.5))

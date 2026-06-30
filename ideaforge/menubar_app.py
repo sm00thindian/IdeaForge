@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import IO, List, Optional
 
 from ideaforge.branding import notification_icon_path
+from ideaforge.health import DAEMON_LOG_PATH, open_daemon_log_tail
 from ideaforge.status import (
     STATE_COMPLETE,
     STATE_ERROR,
@@ -111,7 +112,7 @@ class IdeaForgeMenuBarApp:
         self.elapsed_item = rumps.MenuItem("", callback=None)
         self.pipeline_item = rumps.MenuItem("", callback=None)
         self._archive_path = Path.home() / "IdeaForge"
-        self._log_path = Path.home() / "Library" / "Logs" / "ideaforge" / "daemon.log"
+        self._log_path = DAEMON_LOG_PATH
 
         self.app.menu = [
             self.status_item,
@@ -167,7 +168,8 @@ class IdeaForgeMenuBarApp:
         _open_path(self._archive_path)
 
     def open_log(self, _) -> None:
-        _open_path(self._log_path)
+        if not open_daemon_log_tail(self._log_path):
+            _open_path(self._log_path)
 
     def open_status_file(self, _) -> None:
         _open_path(default_status_path())
