@@ -83,6 +83,7 @@ class DeviceBinding:
     name: str
     mount_glob: str
     profile: str = "z28"
+    chunk_mode: Optional[str] = None  # gap | silence | fixed_window | none; overrides [processing]
 
 
 @dataclass
@@ -160,6 +161,7 @@ class IdeaForgeConfig:
                     name=str(entry["name"]),
                     mount_glob=str(entry["mount_glob"]),
                     profile=str(entry.get("profile", "z28")),
+                    chunk_mode=str(entry["chunk_mode"]) if entry.get("chunk_mode") else None,
                 )
                 for entry in data["devices"]
                 if isinstance(entry, dict) and "name" in entry and "mount_glob" in entry

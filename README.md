@@ -380,14 +380,25 @@ split_window_seconds = 900      # for fixed_window mode (15 min segments)
 - **`gap`** (default) — Z28-style: merge consecutive `R*` chunks; no splitting of long generic files.
 - **`silence`** / **`fixed_window`** — split long non-`R*` recordings into separate sessions.
 
+Per-device override (1.1.0) — set `chunk_mode` on a `[[devices]]` entry when one recorder needs different splitting than another:
+
+```toml
+[[devices]]
+name = "field-recorder"
+mount_glob = "RECORDER"
+profile = "generic_wav"
+chunk_mode = "fixed_window"
+```
+
 Meeting notes include YAML frontmatter with authoritative `date` and `recording_date_source` (`recset`, `filename`, or `mtime`).
 
-## Fleet ops (1.0.0)
+## Fleet ops (1.0.0+)
 
 ```bash
 ideaforge fleet                 # TUI: pipeline + per-device failures and pending queue
 ideaforge fleet --json
 ideaforge speakers list         # known speaker embeddings (after diarized sessions)
+ideaforge speakers register R2026-06-30-10-00-00 SPEAKER_00 "Alex"   # 1.1.0
 ```
 
 **Remote archive sync** (optional, after notes are generated):
@@ -401,6 +412,16 @@ scope = "session"    # session | device | archive
 ```
 
 Requires `rsync` on PATH. Sync runs automatically at the end of the summarize step when enabled.
+
+**Manual sync** (1.1.0) — push archive data on demand without waiting for the pipeline:
+
+```bash
+ideaforge sync --source ~/IdeaForge/z28/2026-06-30 --dry-run
+ideaforge sync --source ~/IdeaForge/z28 --scope device
+ideaforge sync --source ~/IdeaForge --scope archive --force
+```
+
+`--dry-run` previews rsync; `--force` repeats a path already recorded in `.sync_log.json`.
 
 **Speaker library** — when diarization is on, pyannote embeddings are matched against `~/Library/Application Support/IdeaForge/speaker_library.json`. Configure in `[speakers]`:
 

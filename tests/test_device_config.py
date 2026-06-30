@@ -26,6 +26,24 @@ profile = "z28"
     assert cfg.devices[0].name == "office-z28"
 
 
+def test_validate_config_accepts_device_chunk_mode(tmp_path: Path):
+    config = tmp_path / "config.toml"
+    config.write_text(
+        """
+archive = "~/IdeaForge"
+
+[[devices]]
+name = "field"
+mount_glob = "REC"
+profile = "generic_wav"
+chunk_mode = "fixed_window"
+""".strip(),
+        encoding="utf-8",
+    )
+    cfg = validate_config_file(config, check_paths=False)
+    assert cfg.devices[0].chunk_mode == "fixed_window"
+
+
 def test_validate_config_rejects_unknown_profile(tmp_path: Path):
     config = tmp_path / "config.toml"
     config.write_text(

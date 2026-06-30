@@ -77,7 +77,12 @@ def resolve_sync_paths(
     return archive_root
 
 
-def run_rsync(local_path: Path, settings: SyncSettings) -> SyncResult:
+def run_rsync(
+    local_path: Path,
+    settings: SyncSettings,
+    *,
+    dry_run: bool = False,
+) -> SyncResult:
     if not settings.enabled:
         return SyncResult(
             ok=True,
@@ -112,7 +117,10 @@ def run_rsync(local_path: Path, settings: SyncSettings) -> SyncResult:
         )
 
     destination = settings.target.rstrip("/") + "/"
-    cmd = ["rsync", *settings.extra_args, str(local_path) + "/", destination]
+    extra = list(settings.extra_args)
+    if dry_run and "-n" not in extra and "--dry-run" not in extra:
+        extra = ["-n", *extra]
+    cmd = ["rsync", *extra, str(local_path) + "/", destination]
     try:
         completed = subprocess.run(
             cmd,

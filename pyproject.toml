@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ideaforge"
-version = "1.0.1"
+version = "1.1.0"
 description = "Local-first pipeline for USB voice recorders"
 readme = "README.md"
 license = {text = "MIT"}
@@ -57,6 +57,13 @@ files = [
     "ideaforge/ingest.py",
     "ideaforge/state_db.py",
     "ideaforge/log_util.py",
+    "ideaforge/archive_status.py",
+    "ideaforge/device_registry.py",
+    "ideaforge/daemon.py",
+    "ideaforge/session_worker.py",
+    "ideaforge/fleet.py",
+    "ideaforge/remote_sync.py",
+    "ideaforge/sync_cli.py",
 ]
 warn_unused_ignores = true
 check_untyped_defs = true

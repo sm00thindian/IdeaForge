@@ -141,10 +141,10 @@ profile = "generic_wav"
 
 ### Tier 2 — Production hardening (1.1.0)
 
-- [ ] **`ideaforge sync`** — Manual/dry-run rsync command (like `--export-only`); `--force` to bypass sync log dedup.
-- [ ] **`ideaforge speakers register`** — Name a speaker from a session stem + label; seed library without waiting for auto-learn.
-- [ ] **Per-device `chunk_mode`** — Optional `chunk_mode` on `[[devices]]` entries (e.g. field recorder on `fixed_window`, Z28 on `gap`).
-- [ ] **Mypy expansion** — Add `daemon.py`, `session_worker.py`, `fleet.py`, `archive_status.py` to mypy subset.
+- [x] **`ideaforge sync`** — Manual/dry-run rsync command; `--force` to bypass sync log dedup (1.1.0).
+- [x] **`ideaforge speakers register`** — Name a speaker from session stem + pyannote label (1.1.0).
+- [x] **Per-device `chunk_mode`** — Optional `chunk_mode` on `[[devices]]` entries (1.1.0).
+- [x] **Mypy expansion** — `daemon.py`, `session_worker.py`, `fleet.py`, `archive_status.py`, `sync_cli.py`, etc. (1.1.0).
 
 ---
 

@@ -42,6 +42,10 @@ def build_parser() -> argparse.ArgumentParser:
   ideaforge fleet
   ideaforge fleet --serve --port 8765
   ideaforge speakers list
+  ideaforge sync --source ~/IdeaForge/z28/2026-06-30 --dry-run
+  ideaforge speakers register R2026-06-30-10-00-00 SPEAKER_00 "Alex"
+  ideaforge speakers register R2026-06-30-10-00-00 SPEAKER_00 "Kilynn"
+  ideaforge sync --source ~/IdeaForge/z28/2026-06-30 --dry-run
   ideaforge --source /Volumes/Z29 --mode meeting --diarize
 """,
     )
@@ -96,6 +100,40 @@ def build_parser() -> argparse.ArgumentParser:
     speakers_parser = subparsers.add_parser("speakers", help="Speaker embedding library")
     speakers_sub = speakers_parser.add_subparsers(dest="speakers_action", required=True)
     speakers_sub.add_parser("list", help="List known speakers")
+    speakers_register = speakers_sub.add_parser(
+        "register",
+        help="Register a speaker name from a diarized session",
+    )
+    speakers_register.add_argument("session_stem", help="Archived session stem (e.g. R2026-06-30-10-00-00)")
+    speakers_register.add_argument("speaker_label", help="pyannote label (e.g. SPEAKER_00)")
+    speakers_register.add_argument("name", help="Display name to store in the library")
+
+    sync_parser = subparsers.add_parser("sync", help="Push archive data to remote rsync target")
+    sync_parser.add_argument(
+        "--source",
+        type=Path,
+        required=True,
+        help="Session date folder, device archive root, or archive root",
+    )
+    sync_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview rsync without transferring files",
+    )
+    sync_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Sync even if path was synced previously",
+    )
+    sync_parser.add_argument(
+        "--scope",
+        choices=["session", "device", "archive"],
+        help="Override sync scope (default: auto-detect from --source)",
+    )
+    sync_parser.add_argument(
+        "--target",
+        help="Override sync.target from config",
+    )
 
     source = parser.add_mutually_exclusive_group()
     source.add_argument("--source", type=Path, help="Mounted recorder or folder path")
@@ -355,6 +393,19 @@ def main(argv: Optional[list] = None) -> int:
     args = parser.parse_args(argv)
     cfg = resolve_config(args)
 
+    if args.command == "sync":
+        from ideaforge.sync_cli import run_manual_sync
+
+        cfg.resolve_secrets()
+        return run_manual_sync(
+            cfg,
+            args.source,
+            dry_run=args.dry_run,
+            force=args.force,
+            scope=args.scope,
+            target=args.target,
+        )
+
     if args.command == "fleet":
         from ideaforge.fleet import (
             collect_fleet_snapshot,
@@ -390,6 +441,24 @@ def main(argv: Optional[list] = None) -> int:
             print(f"    sessions: {sessions}{extra}")
             print(f"    updated:  {speaker.updated_at or '—'}")
             print()
+        return 0
+
+    if args.command == "speakers" and args.speakers_action == "register":
+        from ideaforge.speaker_library import register_speaker_from_session
+
+        cfg.resolve_secrets()
+        try:
+            entry = register_speaker_from_session(
+                cfg,
+                session_stem=args.session_stem,
+                speaker_label=args.speaker_label,
+                name=args.name,
+            )
+        except (FileNotFoundError, KeyError, RuntimeError) as exc:
+            print(f"❌ {exc}")
+            return 1
+        print(f"✓ Registered {entry.name} from {args.session_stem} ({args.speaker_label})")
+        print(f"  id: {entry.speaker_id}")
         return 0
 
     if args.command == "device" and args.device_action == "clock":

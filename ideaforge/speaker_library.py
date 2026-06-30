@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -11,7 +12,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
+from ideaforge.config import IdeaForgeConfig
+from ideaforge.device_registry import list_device_archive_roots
+from ideaforge.diarize import load_cached_turns
 from ideaforge.transcription_types import SpeakerTurn
+
+_DATE_FOLDER = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 SPEAKER_LIBRARY_SCHEMA_VERSION = 1
 DEFAULT_LIBRARY_PATH = (
@@ -299,3 +305,87 @@ def apply_speaker_library(
         print(f"    ✓ Speaker library matched: {matched}")
 
     return combined
+
+
+def _audio_candidates(folder: Path, session_stem: str) -> List[Path]:
+    names = [
+        f"{session_stem}_merged.wav",
+        f"{session_stem}_merged.WAV",
+        f"{session_stem}.wav",
+        f"{session_stem}.WAV",
+    ]
+    found: List[Path] = []
+    for name in names:
+        path = folder / name
+        if path.is_file():
+            found.append(path)
+    if not found:
+        found.extend(sorted(folder.glob(f"{session_stem}*.wav")))
+        found.extend(sorted(folder.glob(f"{session_stem}*.WAV")))
+    return found
+
+
+def find_session_folder(cfg: IdeaForgeConfig, session_stem: str) -> Optional[Path]:
+    """Locate archived session folder containing ``session_stem`` artifacts."""
+    search_roots = [root for _name, root in list_device_archive_roots(cfg)]
+    archive = cfg.archive.expanduser().resolve()
+    if archive not in search_roots:
+        search_roots.append(archive)
+
+    for root in search_roots:
+        if not root.is_dir():
+            continue
+        for child in sorted(root.iterdir()):
+            if not child.is_dir() or not _DATE_FOLDER.match(child.name):
+                continue
+            if (child / f"{session_stem}_turns.json").is_file():
+                return child
+            if _audio_candidates(child, session_stem):
+                return child
+    return None
+
+
+def register_speaker_from_session(
+    cfg: IdeaForgeConfig,
+    *,
+    session_stem: str,
+    speaker_label: str,
+    name: str,
+) -> SpeakerEntry:
+    """Extract embedding from a diarized session and register under ``name``."""
+    folder = find_session_folder(cfg, session_stem)
+    if folder is None:
+        raise FileNotFoundError(f"session not found in archive: {session_stem}")
+
+    turns_path = folder / f"{session_stem}_turns.json"
+    turns = load_cached_turns(turns_path)
+    if not turns:
+        raise FileNotFoundError(
+            f"missing diarization cache: {turns_path.name} — run with --diarize first"
+        )
+
+    audio_candidates = _audio_candidates(folder, session_stem)
+    if not audio_candidates:
+        raise FileNotFoundError(f"no audio for session {session_stem} in {folder}")
+
+    hf_token = cfg.hf_token or ""
+    if not hf_token:
+        raise RuntimeError("HF_TOKEN required for speaker embedding extraction")
+
+    embeddings = extract_speaker_embeddings(audio_candidates[0], turns, hf_token)
+    embedding = embeddings.get(speaker_label)
+    if embedding is None:
+        labels = ", ".join(sorted(embeddings.keys())) or "(none)"
+        raise KeyError(
+            f"speaker label {speaker_label!r} not found — available: {labels}"
+        )
+
+    library = load_speaker_library(cfg.speaker_library_path)
+    entry = register_speaker(
+        library,
+        name=name,
+        embedding=embedding,
+        session_stem=session_stem,
+    )
+    save_speaker_library(library, cfg.speaker_library_path)
+    return entry

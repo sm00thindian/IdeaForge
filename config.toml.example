@@ -10,6 +10,7 @@ archive = "~/IdeaForge"
 # name = "office-z28"
 # mount_glob = "NO NAME"
 # profile = "z28"
+# chunk_mode = "gap"           # optional override: gap | silence | fixed_window | none
 #
 # [[devices]]
 # name = "field-recorder"

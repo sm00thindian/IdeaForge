@@ -2,6 +2,18 @@
 
 All notable changes to IdeaForge are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.0] - 2026-06-30
+
+### Added
+
+- **`ideaforge sync`** — Manual rsync push with `--dry-run`, `--force` (bypass sync log dedup), `--scope`, and `--target` (`sync_cli.py`).
+- **`ideaforge speakers register`** — Name a pyannote label from a diarized session stem; stores embedding in the speaker library.
+- **Per-device `chunk_mode`** — Optional `chunk_mode` on `[[devices]]` overrides global `[processing].chunk_mode`.
+
+### Changed
+
+- **Mypy expansion** — `daemon.py`, `session_worker.py`, `fleet.py`, `archive_status.py`, `device_registry.py`, `remote_sync.py`, and `sync_cli.py` added to `[tool.mypy]` file set.
+
 ## [1.0.1] - 2026-06-30
 
 ### Added

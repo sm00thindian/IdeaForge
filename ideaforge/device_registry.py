@@ -21,6 +21,24 @@ def archive_device_root(cfg: "IdeaForgeConfig", device_name: Optional[str] = Non
     return root
 
 
+def device_name_for_archive_root(cfg: "IdeaForgeConfig", archive: Path) -> Optional[str]:
+    """Return configured device name when ``archive`` is a per-device archive root."""
+    resolved = archive.expanduser().resolve()
+    for name, root in list_device_archive_roots(cfg):
+        if resolved == root.resolve() and cfg.devices:
+            return name
+    return None
+
+
+def resolve_chunk_mode(cfg: "IdeaForgeConfig", device_name: Optional[str]) -> str:
+    """Effective chunk_mode for a device (per-device override or global default)."""
+    if device_name:
+        for binding in cfg.devices:
+            if binding.name == device_name and binding.chunk_mode:
+                return binding.chunk_mode
+    return cfg.chunk_mode
+
+
 def list_device_archive_roots(cfg: "IdeaForgeConfig") -> List[Tuple[str, Path]]:
     """Return ``(device_name, archive_root)`` pairs for status and fleet aggregation."""
     archive = cfg.archive.expanduser().resolve()

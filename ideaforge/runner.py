@@ -7,6 +7,7 @@ from typing import List, Optional, Set
 
 from ideaforge.backends import resolve_whisper_backend
 from ideaforge.chunks import RecordingGroup, prepare_session_groups
+from ideaforge.device_registry import device_name_for_archive_root, resolve_chunk_mode
 from ideaforge.config import IdeaForgeConfig
 from ideaforge.ingest import (
     archive_paths_for_failed_sessions,
@@ -128,10 +129,12 @@ def process_source(
         )
     else:
         audio_files = get_audio_files(source, extensions, cfg.min_file_size_bytes)
+    device_name = device_name_for_archive_root(cfg, archive)
+    chunk_mode = resolve_chunk_mode(cfg, device_name)
     groups = prepare_session_groups(
         audio_files,
         merge_chunks=cfg.merge_chunks,
-        chunk_mode=cfg.chunk_mode,  # type: ignore[arg-type]
+        chunk_mode=chunk_mode,  # type: ignore[arg-type]
         chunk_gap_seconds=cfg.chunk_gap_seconds,
         merge_min_chunk_seconds=cfg.merge_min_chunk_seconds,
         split_silence_seconds=cfg.split_silence_seconds,

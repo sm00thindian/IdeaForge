@@ -41,6 +41,7 @@ export HF_TOKEN="hf_..."
 | `ideaforge/archive_status.py` | Per-device failure aggregation for status/menubar |
 | `ideaforge/fleet.py` | Fleet dashboard TUI and web serve |
 | `ideaforge/remote_sync.py` | Optional rsync after meeting notes |
+| `ideaforge/sync_cli.py` | Manual `ideaforge sync` command |
 | `ideaforge/speaker_library.py` | Cross-session speaker embedding reuse |
 | `ideaforge/session_time.py` | Recording date resolution (recset > filename > mtime) |
 | `ideaforge/pipeline.py` | Stage flags (`--llm-only`, etc.) |

@@ -187,6 +187,11 @@ def validate_config_values(cfg: IdeaForgeConfig) -> List[str]:
                 f"devices[{device.name!r}].profile '{device.profile}' "
                 f"(expected one of {sorted(DEVICE_PROFILES)})"
             )
+        if device.chunk_mode is not None and device.chunk_mode not in CHUNK_MODES:
+            issues.append(
+                f"devices[{device.name!r}].chunk_mode '{device.chunk_mode}' "
+                f"(expected one of {sorted(CHUNK_MODES)})"
+            )
 
     return issues
 
