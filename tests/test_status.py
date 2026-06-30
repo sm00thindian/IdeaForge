@@ -4,6 +4,7 @@ from ideaforge.pipeline import PipelineStages
 from ideaforge.status import (
     STATE_COMPLETE,
     STATE_PROCESSING,
+    STATE_SETTLING,
     STEP_ACTIVE,
     STEP_DONE,
     Stage,
@@ -64,6 +65,33 @@ def test_menu_bar_title_for_active_session():
     reporter.set_step_active(StepId.DIARIZE)
     title = menu_bar_title(reporter._status)
     assert title == "⟳ Diarize speakers 1/2"
+
+
+def test_enter_processing_leaves_settling_state(tmp_path):
+    path = tmp_path / "status.json"
+    reporter = StatusReporter(path)
+    reporter.set_settling(device="NO NAME", recording_count=3)
+    reporter.enter_processing(
+        device="NO NAME",
+        stage=Stage.INGESTING,
+        detail="0/3 files copied",
+        progress=0.0,
+    )
+    loaded = load_status(path)
+    assert loaded.state == STATE_PROCESSING
+    assert loaded.stage == Stage.INGESTING
+    assert loaded.state != STATE_SETTLING
+
+
+def test_update_run_preserves_processing_state(tmp_path):
+    path = tmp_path / "status.json"
+    reporter = StatusReporter(path)
+    reporter.enter_processing(device="NO NAME", stage=Stage.INGESTING)
+    reporter.update_run(sessions_total=2, pipeline="transcribe → llm")
+    loaded = load_status(path)
+    assert loaded.state == STATE_PROCESSING
+    assert loaded.sessions_total == 2
+    assert loaded.pipeline == "transcribe → llm"
 
 
 def test_status_reporter_context_activation(tmp_path):

@@ -173,7 +173,7 @@ class IdeaForgeMenuBarApp:
             STATE_ERROR: "Error",
         }
         headline = state_labels.get(status.state, status.state.title())
-        if status.stage and status.state == STATE_PROCESSING:
+        if status.stage and status.state in (STATE_PROCESSING, STATE_SETTLING):
             headline = status.stage
 
         self.status_item.title = headline

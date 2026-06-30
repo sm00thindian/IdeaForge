@@ -2,6 +2,7 @@ LICENSE
 README.md
 pyproject.toml
 ideaforge/__init__.py
+ideaforge/archive_status.py
 ideaforge/audio_util.py
 ideaforge/backends.py
 ideaforge/branding.py
@@ -36,6 +37,7 @@ ideaforge/speaker_library.py
 ideaforge/speakers.py
 ideaforge/state_db.py
 ideaforge/status.py
+ideaforge/sync_cli.py
 ideaforge/transcribe.py
 ideaforge/transcription_types.py
 ideaforge.egg-info/PKG-INFO
@@ -50,6 +52,7 @@ ideaforge/assets/icon.svg
 ideaforge/assets/logo.svg
 ideaforge/assets/social-preview.png
 ideaforge/assets/social.svg
+tests/test_archive_status.py
 tests/test_audio_normalize.py
 tests/test_audio_util.py
 tests/test_branding.py
@@ -63,6 +66,7 @@ tests/test_daemon_config.py
 tests/test_daemon_ingest.py
 tests/test_daemon_multi_device.py
 tests/test_device.py
+tests/test_device_chunk_mode.py
 tests/test_device_clock.py
 tests/test_device_config.py
 tests/test_device_profiles.py
@@ -98,6 +102,8 @@ tests/test_schema.py
 tests/test_session_failures.py
 tests/test_session_time.py
 tests/test_speaker_library.py
+tests/test_speaker_register.py
 tests/test_speakers.py
 tests/test_state_db.py
 tests/test_status.py
+tests/test_sync_cli.py

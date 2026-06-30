@@ -13,7 +13,7 @@ except ImportError:
 
 from ideaforge.chunks import RecordingGroup
 from ideaforge.notify import RecordingResult
-from ideaforge.status import StatusReporter
+from ideaforge.status import StatusReporter, run_with_active_reporter
 
 SessionRunner = Callable[[int, RecordingGroup], tuple[int, int, RecordingResult]]
 FailureHandler = Callable[[RecordingGroup, Exception], None]
@@ -48,7 +48,7 @@ def run_session_groups(
 
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = {
-            executor.submit(run_one, index, group): group
+            executor.submit(run_with_active_reporter, reporter, run_one, index, group): group
             for index, group in enumerate(groups, start=1)
         }
         for future in as_completed(futures):

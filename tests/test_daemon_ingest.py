@@ -9,6 +9,7 @@ from ideaforge.device import RecorderDevice
 from ideaforge.ingest import IngestResult
 from ideaforge.notify import ProcessResult
 from ideaforge.pipeline import PipelineStages
+from ideaforge.status import StatusReporter
 
 
 def _device(tmp_path: Path) -> RecorderDevice:
@@ -94,6 +95,32 @@ def test_daemon_process_device_retries_failures_without_new_ingest(tmp_path: Pat
     assert result.files_processed == 1
     process.assert_called_once()
     assert process.call_args.kwargs["scope_files"] is None
+
+
+def test_daemon_process_device_passes_reporter_to_process_source(tmp_path: Path):
+    device = _device(tmp_path)
+    archive = tmp_path / "IdeaForge"
+    cfg = IdeaForgeConfig(archive=archive)
+    stages = PipelineStages(copy=True, transcribe=True, diarize=False, llm=False)
+    reporter = StatusReporter(enabled=False)
+    archive_copy = archive / "2026-06-27" / "R2026-06-27-07-43-11.WAV"
+    ingest = IngestResult(archive_files=[archive_copy], files_verified=1)
+
+    with (
+        patch("ideaforge.daemon.run_device_ingest", return_value=ingest),
+        patch("ideaforge.daemon.load_processed_log", return_value={"failures": {}}),
+        patch("ideaforge.daemon.process_source", return_value=ProcessResult(files_processed=1)) as process,
+    ):
+        daemon_process_device(
+            device.mount_path,
+            archive,
+            cfg,
+            stages,
+            reporter=reporter,
+        )
+
+    assert process.call_args.kwargs["reporter"] is reporter
+    assert process.call_args.kwargs["device_label"] == device.mount_path.name
 
 
 def test_watcher_uses_daemon_process_fn_by_default():

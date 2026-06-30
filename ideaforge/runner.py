@@ -23,7 +23,7 @@ from ideaforge.pipeline import PipelineStages
 from ideaforge.session_pool import run_session_groups, session_log_lock
 from ideaforge.session_worker import process_group
 from ideaforge.state_db import ProcessedLog
-from ideaforge.status import StatusReporter
+from ideaforge.status import STATE_PROCESSING, StatusReporter
 
 
 def print_run_header(
@@ -98,6 +98,8 @@ def process_source(
     scope_files: Optional[List[Path]] = None,
     retry_failed_only: bool = False,
     include_failed_retries: bool = True,
+    reporter: Optional[StatusReporter] = None,
+    device_label: Optional[str] = None,
 ) -> ProcessResult:
     """Run the configured pipeline on all audio files under source."""
     extensions: Set[str] = set(cfg.audio_extensions)
@@ -155,8 +157,8 @@ def process_source(
         print("    ℹ️  No audio files to process")
         return ProcessResult()
 
-    device_label = source.name
-    reporter = StatusReporter()
+    label = device_label or source.name
+    reporter = reporter or StatusReporter()
     result = ProcessResult()
     failed_pending = failed_session_stems(processed_log)
     if failed_pending:
@@ -183,11 +185,14 @@ def process_source(
         )
 
     with reporter.activate():
-        reporter.begin_run(
-            device=device_label,
-            sessions_total=len(groups),
-            pipeline=stages.label,
-        )
+        if reporter._status.state == STATE_PROCESSING:
+            reporter.update_run(sessions_total=len(groups), pipeline=stages.label)
+        else:
+            reporter.begin_run(
+                device=label,
+                sessions_total=len(groups),
+                pipeline=stages.label,
+            )
         recordings = run_session_groups(
             groups,
             run_one=_run_session,

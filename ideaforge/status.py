@@ -208,6 +208,15 @@ def active_reporter() -> Optional["StatusReporter"]:
     return _active_reporter.get()
 
 
+def run_with_active_reporter(reporter: Optional["StatusReporter"], fn, /, *args, **kwargs):
+    """Run ``fn`` with ``reporter`` bound for ``active_reporter()`` (thread-safe)."""
+    token = _active_reporter.set(reporter)
+    try:
+        return fn(*args, **kwargs)
+    finally:
+        _active_reporter.reset(token)
+
+
 def status_touch(
     *,
     stage: Optional[str] = None,
@@ -230,7 +239,7 @@ class StatusReporter:
         self._status = PipelineStatus()
         self._run_started_at: Optional[float] = None
         self._step_ids: List[str] = []
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._active_sessions = 0
 
     def _write(self) -> None:
@@ -238,6 +247,36 @@ class StatusReporter:
             with self._lock:
                 self._status.active_sessions = self._active_sessions
                 save_status(self._status, self.path)
+
+    def enter_processing(
+        self,
+        *,
+        device: str,
+        stage: str,
+        detail: Optional[str] = None,
+        progress: Optional[float] = None,
+    ) -> None:
+        """Move from settling/watching into an active pipeline stage (ingest, transcribe, …)."""
+        with self._lock:
+            self._status.state = STATE_PROCESSING
+            self._status.device = device
+            self._status.stage = stage
+            if detail is not None:
+                self._status.detail = detail
+            if progress is not None:
+                self._status.progress = max(0.0, min(1.0, progress))
+            if self._status.started_at is None:
+                self._status.started_at = _utc_now()
+            self._status.error = None
+        self._write()
+
+    def update_run(self, *, sessions_total: int, pipeline: str) -> None:
+        """Refresh session count when continuing an in-flight daemon run."""
+        with self._lock:
+            self._status.sessions_total = sessions_total
+            self._status.pipeline = pipeline
+            self._status.state = STATE_PROCESSING
+        self._write()
 
     @contextmanager
     def track_session(self) -> Iterator[None]:
@@ -308,40 +347,44 @@ class StatusReporter:
         recording_stem: str,
         step_plan: List[tuple[str, str]],
     ) -> None:
-        self._status.state = STATE_PROCESSING
-        self._status.session = session_index
-        self._status.recording = label
-        self._status.stage = Stage.PREPARING
-        self._status.progress = None
-        self._status.detail = recording_stem
-        self._status.error = None
-        self._step_ids = [step_id for step_id, _ in step_plan]
-        self._status.steps = [
-            StatusStep(id=step_id, label=step_label) for step_id, step_label in step_plan
-        ]
+        with self._lock:
+            self._status.state = STATE_PROCESSING
+            self._status.session = session_index
+            self._status.recording = label
+            self._status.stage = Stage.PREPARING
+            self._status.progress = None
+            self._status.detail = recording_stem
+            self._status.error = None
+            self._step_ids = [step_id for step_id, _ in step_plan]
+            self._status.steps = [
+                StatusStep(id=step_id, label=step_label) for step_id, step_label in step_plan
+            ]
         self._write()
 
     def set_step_active(self, step_id: str, *, detail: Optional[str] = None) -> None:
-        for step in self._status.steps:
-            if step.id == step_id:
-                step.status = STEP_ACTIVE
-                self._status.stage = step.label
-            elif step.status == STEP_ACTIVE:
-                step.status = STEP_DONE
-        if detail is not None:
-            self._status.detail = detail
+        with self._lock:
+            for step in self._status.steps:
+                if step.id == step_id:
+                    step.status = STEP_ACTIVE
+                    self._status.stage = step.label
+                elif step.status == STEP_ACTIVE:
+                    step.status = STEP_DONE
+            if detail is not None:
+                self._status.detail = detail
         self._write()
 
     def mark_step_done(self, step_id: str) -> None:
-        for step in self._status.steps:
-            if step.id == step_id:
-                step.status = STEP_DONE
+        with self._lock:
+            for step in self._status.steps:
+                if step.id == step_id:
+                    step.status = STEP_DONE
         self._write()
 
     def skip_step(self, step_id: str) -> None:
-        for step in self._status.steps:
-            if step.id == step_id:
-                step.status = STEP_SKIPPED
+        with self._lock:
+            for step in self._status.steps:
+                if step.id == step_id:
+                    step.status = STEP_SKIPPED
         self._write()
 
     def touch(
@@ -352,14 +395,15 @@ class StatusReporter:
         detail: Optional[str] = None,
         clear_progress: bool = False,
     ) -> None:
-        if stage is not None:
-            self._status.stage = stage
-        if clear_progress:
-            self._status.progress = None
-        elif progress is not None:
-            self._status.progress = max(0.0, min(1.0, progress))
-        if detail is not None:
-            self._status.detail = detail
+        with self._lock:
+            if stage is not None:
+                self._status.stage = stage
+            if clear_progress:
+                self._status.progress = None
+            elif progress is not None:
+                self._status.progress = max(0.0, min(1.0, progress))
+            if detail is not None:
+                self._status.detail = detail
         self._write()
 
     def set_error(self, message: str) -> None:

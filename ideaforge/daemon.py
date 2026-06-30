@@ -93,7 +93,7 @@ def _maybe_sync_device_clock(
         return
 
     if reporter is not None:
-        reporter.touch(stage=Stage.SYNCING_CLOCK)
+        reporter.enter_processing(device=source.name, stage=Stage.SYNCING_CLOCK)
 
     result = sync_device_clock(
         device,
@@ -175,6 +175,8 @@ def daemon_process_device(
         export_settings=export_settings,
         scope_files=scope,
         include_failed_retries=True,
+        reporter=reporter,
+        device_label=source.name,
     )
 
 

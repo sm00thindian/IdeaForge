@@ -202,11 +202,11 @@ def ingest_device_recordings(
 
     print(f"\n📥 Ingesting {total} recording(s) from device → archive")
     if reporter is not None:
-        reporter.touch(
+        reporter.enter_processing(
+            device=source.name,
             stage=Stage.INGESTING,
-            progress=0.0,
             detail=f"0/{total} files copied",
-            clear_progress=True,
+            progress=0.0,
         )
 
     for index, audio_file in enumerate(device_files, start=1):
