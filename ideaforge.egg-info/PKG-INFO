@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: ideaforge
-Version: 0.5.0
+Version: 0.8.0
 Summary: Local-first pipeline for USB voice recorders
 License: MIT
 Requires-Python: >=3.10
@@ -71,7 +71,7 @@ USB recorder plugged in
 │  Summarize        │  LLM infers names, action items, decisions
 └─────────┬─────────┘
           ▼
-   summary.md + summary.json
+   {session}_summary.md + {session}_summary.json
 ```
 
 **Two ways to run:**
@@ -188,8 +188,12 @@ max_speakers = 6
 [daemon]
 poll_interval_seconds = 5
 settle_seconds = 5
-delete_after_copy = true  # remove from device after verified copy
-notify = true             # macOS popup when pipeline finishes
+delete_after_copy = true      # remove from device after verified copy
+unmount_after_ingest = true   # eject volume after ingest completes
+notify = true                 # macOS popup when pipeline finishes
+sync_device_clock = true      # fix recset.txt before ingest
+clock_skew_threshold_seconds = 60
+notify_on_failure = false     # opt-in alert when a session fails
 ```
 
 For Claude instead of Grok:
@@ -248,7 +252,7 @@ ideaforge --daemon
 # Restart after code or config changes
 launchctl kickstart -k gui/$(id -u)/com.ideaforge.daemon
 
-# Watch logs
+# Watch logs (auto-rotated at 10 MiB — keeps daemon.log.1 … .log.3)
 tail -f ~/Library/Logs/ideaforge/daemon.log
 
 # Stop (keeps install — restart with install-daemon.sh)
@@ -261,16 +265,78 @@ tail -f ~/Library/Logs/ideaforge/daemon.log
 **What happens on plug-in:**
 
 1. Device detected → wait `settle_seconds` for mount to stabilize
-2. Copy new recordings to `~/IdeaForge/YYYY-MM-DD/`
-3. Merge consecutive chunks into one session (when `merge_chunks = true`)
-4. Hash-verify archive copy → delete from device (if `delete_after_copy = true`)
-5. Transcribe → diarize → LLM meeting notes (Grok by default)
+2. **Clock sync** — read `recset.txt` and write system time when skew exceeds `clock_skew_threshold_seconds` (`sync_device_clock = true`, default). Existing on-device WAV filenames are unchanged; this fixes the recorder for future sessions.
+3. **Ingest** — copy all new recordings to `~/IdeaForge/YYYY-MM-DD/`, hash-verify each copy, delete verified sources from device (`delete_after_copy = true`)
+4. **Unmount** — eject the volume when ingest succeeds and no recordings remain on device (`unmount_after_ingest = true`)
+5. **Process locally** — merge consecutive chunks, transcribe, diarize, LLM (runs on archive only; device is already unmounted)
 6. Skip sessions already in `.processed_log.json` (SHA-256 dedup per chunk)
 7. macOS notification with meeting title and action item summary (`notify = true`)
+
+Manual `ideaforge --auto-source` still copies and processes in one pass (no auto-unmount).
+
+**Retry failed sessions** (stored in `~/IdeaForge/.processed_log.json`):
+
+```bash
+ideaforge --source ~/IdeaForge --retry-failed
+```
+
+The daemon also picks up pending failures automatically on the next plug-in (even if there are no new recordings). The menu bar shows `⚠N` when failures are pending.
+
+**Reprocess archived sessions** (full pipeline redo, no copy):
+
+```bash
+ideaforge --reprocess --source ~/IdeaForge/2026-06-27
+ideaforge --reprocess --source ~/IdeaForge --from 2026-06-25 --to 2026-06-30
+ideaforge --reprocess --source ~/IdeaForge/2026-06-27 --session R2026-06-27-07-43-11
+ideaforge --reprocess --source ~/IdeaForge/2026-06-27 --llm-only   # stage-specific
+```
+
+**Check status** (pipeline, services, pending failures):
+
+```bash
+ideaforge --status
+ideaforge --status --watch                    # live refresh (Ctrl+C to stop)
+ideaforge --status --watch --watch-interval 5
+ideaforge --status-json                       # for scripting
+```
+
+The menu bar **Open Log** item opens Terminal with `tail -f` on the daemon log.
+
+**Ingest only** (test copy/verify/purge without ML):
+
+```bash
+ideaforge --auto-source --ingest-only
+ideaforge --auto-source --ingest-only --no-unmount   # keep volume mounted
+```
 
 Notifications use the IdeaForge icon when [terminal-notifier](https://github.com/julienXX/terminal-notifier) is installed (`brew install terminal-notifier`). Without it, macOS falls back to the default Script Editor icon.
 
 Manual `ideaforge --auto-source` runs do **not** delete device files — only the daemon does.
+
+### LaunchAgent reload
+
+The daemon and menu bar run as LaunchAgents. They do **not** re-read `config.toml` or your shell on their own — restart them after changes.
+
+| What changed | Action |
+|--------------|--------|
+| **`config.toml`** (archive path, daemon flags, models, `sync_device_clock`, etc.) | `launchctl kickstart -k gui/$(id -u)/com.ideaforge.daemon` |
+| **API keys or secrets** (`XAI_API_KEY`, `HF_TOKEN`, …) | `./scripts/install-daemon.sh` then kickstart (installer snapshots env into the plist) |
+| **Code upgrade** (`git pull`, `pip install -e`) | Reinstall in project venv, then kickstart — plist uses `$PROJECT/venv/bin/ideaforge` |
+| **Invalid config** | Daemon exits at startup; run `ideaforge --validate-config`, fix `~/.config/ideaforge/config.toml`, then kickstart |
+| **Menu bar app** (code or reinstall) | `./scripts/stop-menubar.sh` then `./scripts/install-menubar.sh`, or `launchctl kickstart -k gui/$(id -u)/com.ideaforge.menubar` |
+
+```bash
+# Restart daemon (picks up config.toml + refreshed venv binary)
+launchctl kickstart -k gui/$(id -u)/com.ideaforge.daemon
+
+# Restart menu bar (only needed after menubar code changes)
+launchctl kickstart -k gui/$(id -u)/com.ideaforge.menubar
+
+# Confirm services
+ideaforge --status
+```
+
+Foreground `ideaforge --daemon` reads config and env from your current shell each run — useful when iterating on settings without kickstart.
 
 ## Menu bar progress
 
@@ -295,11 +361,68 @@ max_parallel_sessions = 2   # default in example config; use 1 for fully sequent
 
 Start with `1` on memory-constrained machines; `2` is a good balance on Apple Silicon with Grok for summarization.
 
+## Multi-recorder devices (0.8.0)
+
+Map volume labels to **device profiles** in config. Built-in profiles: `z28` (RECORD/R*.WAV + `recset.txt`) and `generic_wav` (recursive audio on mass-storage volumes).
+
+```toml
+[[devices]]
+name = "office-z28"
+mount_glob = "NO NAME"
+profile = "z28"
+
+[[devices]]
+name = "field-recorder"
+mount_glob = "RECORDER"
+profile = "generic_wav"
+```
+
+- **Without `[[devices]]`** — legacy behavior: auto-detect Z28/Z29 volumes; single recorder at a time.
+- **With `[[devices]]`** — each named device archives under `~/IdeaForge/{name}/YYYY-MM-DD/`; daemon can process multiple configured mounts (one per poll cycle).
+- **`ideaforge --detect`** — shows profile and config name for each matched volume.
+
+## Archive layout
+
+Everything lands under the archive root from config (default `~/IdeaForge`). With `[[devices]]` configured, each device gets a subdirectory (`~/IdeaForge/office-z28/`, etc.). There is no separate `sessions/` or `notes/` tree — each **session** is a recorder filename stem (e.g. `R2026-06-27-07-43-11`), and all artifacts for that session live in the same **date folder**.
+
+```
+~/IdeaForge/
+├── .processed_log.json          # legacy single-device dedup log (at archive root)
+├── office-z28/                  # when [[devices]] is configured
+│   ├── .processed_log.json
+│   └── YYYY-MM-DD/
+└── YYYY-MM-DD/                  # default layout without [[devices]]
+    ├── R2026-06-27-07-43-11.WAV           # source chunk copied from device
+    ├── R2026-06-27-07-58-22.WAV           # second chunk (same session if gap ≤ chunk_gap_seconds)
+    ├── R2026-06-27-07-43-11_merged.WAV    # merged audio when multiple chunks are grouped
+    ├── R2026-06-27-07-43-11.txt             # transcript
+    ├── R2026-06-27-07-43-11_whisper.json    # whisper metadata
+    ├── R2026-06-27-07-43-11_segments.json   # timed segments
+    ├── R2026-06-27-07-43-11_turns.json      # diarization turn cache
+    ├── R2026-06-27-07-43-11_diarized.json   # speaker-labeled segments
+    ├── R2026-06-27-07-43-11_summary.md      # meeting notes (Markdown)
+    └── R2026-06-27-07-43-11_summary.json    # structured LLM output (action items, speakers, …)
+```
+
+**Sessions vs chunks:** Consecutive recorder splits (same meeting, gap ≤ `chunk_gap_seconds`, each chunk ≥ `merge_min_chunk_seconds`) merge into one session. The session stem is the **first chunk's filename**; outputs use that stem even when several `R*.WAV` files were merged.
+
+**Derived files:** `*_merged.WAV` files are pipeline artifacts — they are not re-ingested or re-processed as source audio.
+
+**Runtime state (outside the archive):**
+
+| Path | Purpose |
+|------|---------|
+| `~/Library/Application Support/IdeaForge/status.json` | Live pipeline stage/progress for menu bar and `ideaforge --status` |
+| `~/Library/Logs/ideaforge/daemon.log` | Daemon stdout |
+| `~/Library/Logs/ideaforge/daemon.err.log` | Daemon stderr |
+
+Point Obsidian export or your own tools at `*_summary.md` / `*_summary.json` under the date folders. Use `ideaforge --reprocess --source ~/IdeaForge/YYYY-MM-DD` to regenerate outputs without copying from the device again.
+
 ## Troubleshooting
 
 | Symptom | Likely cause | What to do |
 |---------|--------------|------------|
-| Wrong meeting date in notes | Recorder clock in `recset.txt`, not archive date | IdeaForge dates sessions from filename/archive mtime, not LLM inference. Fix the device clock or ignore LLM-inferred dates in notes. |
+| Wrong meeting date in notes | Recorder clock in `recset.txt` | Archive date folders follow file mtime at ingest (usually matches filename when the device clock is correct). Session stems come from filenames. LLM-inferred dates in notes are not authoritative — use archive paths and `*_summary.json` metadata. |
 | Short clip merged into long session | Gap rule matched unrelated files | Raise `merge_min_chunk_seconds` (default 600). Short recordings no longer chain onto prior long chunks. |
 | Reprocess picked `*_merged.WAV` | Derived merge artifact in folder | Fixed in 0.5.0 — derived audio is skipped. Update and re-run. |
 | Daemon log shows "skipping" | No new files since last pass | Normal idle behavior after processing; plug in new recordings or check device `RECORD/` folder. |
@@ -309,7 +432,14 @@ Start with `1` on memory-constrained machines; `2` is a good balance on Apple Si
 
 ### Recorder clock
 
-Z28/Z29 devices store wall time in `recset.txt` (e.g. `TIME:14:24 2025/7/7`). Filenames use that clock. If the device date is wrong, filenames look like the wrong year — archive folders still follow the filename stem. The LLM may guess dates from speech; treat `metadata` and archive paths as ground truth.
+Z28/Z29 devices store wall time in `recset.txt` (e.g. `TIME:14:24 2025/7/7`). Filenames use that clock. If the device date is wrong, filenames (and often archive date folders) show the wrong year. The daemon can fix `recset.txt` before ingest (`sync_device_clock = true`). Existing on-device WAV names are unchanged. Treat archive paths and `*_summary.json` as ground truth, not LLM-inferred dates in prose.
+
+```bash
+ideaforge device clock              # compare device vs system time
+ideaforge device clock --sync       # write system time when skew is large
+ideaforge --device-clock            # alias
+ideaforge --validate-config         # check config.toml before restarting daemon
+```
 
 ## Speaker names
 
@@ -570,7 +700,11 @@ Cached `_turns.json` and `_segments.json` make re-runs fast — use `--diarize-o
 ideaforge/
 ├── cli.py          # CLI entry point
 ├── daemon.py       # USB watcher — plug-and-process
-├── runner.py       # Pipeline execution + parallel session pool
+├── runner.py       # Pipeline orchestration (source → sessions)
+├── session_worker.py  # Per-session copy / transcribe / summarize
+├── session_pool.py    # Parallel session executor
+├── state_db.py        # Versioned .processed_log.json schema
+├── log_util.py        # Daemon log rotation
 ├── pipeline.py     # Stage resolution (--llm-only, etc.)
 ├── ingest.py       # Copy, dedup, device purge, derived-audio filter
 ├── chunks.py       # Detect and group consecutive recorder chunks
@@ -608,7 +742,7 @@ scripts/
 - **Local by default** — audio and transcripts stay on your machine
 - **Cloud LLMs are opt-in** — Grok (auto default) needs `XAI_API_KEY`; Claude needs `ANTHROPIC_API_KEY` and `backend = "claude"`
 - **No telemetry** — no analytics, no cloud storage
-- **Dedup log** — `~/IdeaForge/.processed_log.json` tracks file hashes locally
+- **Dedup log** — `~/IdeaForge/.processed_log.json` tracks file hashes and failed sessions for retry (see [Archive layout](#archive-layout))
 
 ## Grok session continuity
 
@@ -630,7 +764,7 @@ Install [terminal-notifier](https://github.com/julienXX/terminal-notifier) (`bre
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for tiered milestones (0.5.1 → 1.0), tech debt, and the multi-recorder/device strategy. [CHANGELOG.md](CHANGELOG.md) lists what shipped in each release.
+See [ROADMAP.md](ROADMAP.md) for tiered milestones (0.5.1 → 1.0), tech debt, and the multi-recorder/device strategy. [CHANGELOG.md](CHANGELOG.md) lists what shipped in each release. [PERFORMANCE.md](PERFORMANCE.md) documents indicative RTF baselines for planning batch runs.
 
 ## Contributing
 

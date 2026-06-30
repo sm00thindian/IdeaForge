@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import List, Optional, Set
 
 from ideaforge.backends import resolve_whisper_backend
-from ideaforge.chunks import RecordingGroup, group_recordings
+from ideaforge.chunks import RecordingGroup, prepare_session_groups
 from ideaforge.config import IdeaForgeConfig
 from ideaforge.ingest import (
     archive_paths_for_failed_sessions,
@@ -128,11 +128,14 @@ def process_source(
         )
     else:
         audio_files = get_audio_files(source, extensions, cfg.min_file_size_bytes)
-    groups = group_recordings(
+    groups = prepare_session_groups(
         audio_files,
-        enabled=cfg.merge_chunks,
+        merge_chunks=cfg.merge_chunks,
+        chunk_mode=cfg.chunk_mode,  # type: ignore[arg-type]
         chunk_gap_seconds=cfg.chunk_gap_seconds,
         merge_min_chunk_seconds=cfg.merge_min_chunk_seconds,
+        split_silence_seconds=cfg.split_silence_seconds,
+        split_window_seconds=cfg.split_window_seconds,
     )
 
     if show_header:

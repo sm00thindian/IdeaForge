@@ -70,11 +70,24 @@ class MeetingNotes:
         return asdict(self)
 
     def to_markdown(self) -> str:
-        lines = [
+        lines: List[str] = []
+        recording_date = self.metadata.get("recording_date")
+        recording_source = self.metadata.get("recording_date_source")
+        if recording_date:
+            lines.extend([
+                "---",
+                f"date: {recording_date}",
+                f"recording_date_source: {recording_source or 'unknown'}",
+                "---",
+                "",
+            ])
+        lines.extend([
             f"# {self.title}",
             "",
             f"**Date:** {self.date or '—'}",
-        ]
+        ])
+        if recording_source:
+            lines.append(f"**Recording date source:** {recording_source}")
         if self.meeting_type:
             lines.append(f"**Type:** {self.meeting_type}")
         lines += ["", "## Executive Summary", "", self.executive_summary, ""]

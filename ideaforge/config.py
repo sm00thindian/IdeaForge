@@ -120,8 +120,12 @@ class IdeaForgeConfig:
     export_obsidian_note: str = "IdeaForge/Action Items.md"
     min_file_size_bytes: int = 50_000
     merge_chunks: bool = True
+    chunk_mode: str = "gap"  # gap | silence | fixed_window | none
     chunk_gap_seconds: float = 30.0
     merge_min_chunk_seconds: float = 600.0
+    split_silence_seconds: float = 3.0
+    split_window_seconds: float = 900.0
+    normalize_audio: bool = True
     max_parallel_sessions: int = 1
     hf_token: Optional[str] = None
     audio_extensions: List[str] = field(
@@ -178,6 +182,14 @@ class IdeaForgeConfig:
                 cfg.chunk_gap_seconds = float(p["chunk_gap_seconds"])
             if "merge_min_chunk_seconds" in p:
                 cfg.merge_min_chunk_seconds = float(p["merge_min_chunk_seconds"])
+            if "chunk_mode" in p:
+                cfg.chunk_mode = str(p["chunk_mode"])
+            if "split_silence_seconds" in p:
+                cfg.split_silence_seconds = float(p["split_silence_seconds"])
+            if "split_window_seconds" in p:
+                cfg.split_window_seconds = float(p["split_window_seconds"])
+            if "normalize_audio" in p:
+                cfg.normalize_audio = bool(p["normalize_audio"])
             if "max_parallel_sessions" in p:
                 cfg.max_parallel_sessions = max(1, int(p["max_parallel_sessions"]))
         if "diarization" in data:

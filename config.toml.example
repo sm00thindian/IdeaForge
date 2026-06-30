@@ -36,8 +36,12 @@ output_format = "both"   # md | json | both
 diarize = false
 min_file_size_bytes = 50000
 merge_chunks = true          # join consecutive recorder splits (e.g. 15 min max)
+chunk_mode = "gap"           # gap | silence | fixed_window | none (0.9.0+)
 chunk_gap_seconds = 30       # max gap between chunk end and next start
 merge_min_chunk_seconds = 600  # prior chunk must be this long to merge (filters short clips)
+split_silence_seconds = 3.0  # silence split: min gap between sessions
+split_window_seconds = 900   # fixed_window split: segment length in seconds
+normalize_audio = true       # convert MP3/FLAC/etc. to WAV via ffmpeg before transcribe
 max_parallel_sessions = 2      # 1 = sequential; 2+ pipelines sessions (GPU serialized, LLM overlaps)
 
 [diarization]

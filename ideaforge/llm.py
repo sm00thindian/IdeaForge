@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ideaforge.config import has_anthropic_api_key, has_xai_api_key
+from ideaforge.session_time import ResolvedRecordingTime
 from ideaforge.export import ExportSettings, export_action_items
 from ideaforge.prompts import Mode, build_prompt
 from ideaforge.status import Stage, status_touch
@@ -51,6 +52,7 @@ def process_transcript(
     force: bool = False,
     archive: Optional[Path] = None,
     export_settings: Optional[ExportSettings] = None,
+    recording_time: Optional["ResolvedRecordingTime"] = None,
 ) -> Optional[Path]:
     """Generate structured output from a transcript. Returns primary output path."""
     stem = transcript_path.stem
@@ -138,6 +140,7 @@ def process_transcript(
         llm_model=used_model,
         archive=archive,
         export_settings=export_settings,
+        recording_time=recording_time,
     )
     return primary_path
 
@@ -264,17 +267,23 @@ def _write_structured_output(
     llm_model: str,
     archive: Optional[Path] = None,
     export_settings: Optional[ExportSettings] = None,
+    recording_time: Optional[ResolvedRecordingTime] = None,
 ) -> Path:
     if mode == "creative":
-        output = _dict_to_creative(parsed, transcript_path)
+        output = _dict_to_creative(parsed, transcript_path, recording_time=recording_time)
     else:
-        output = _dict_to_meeting(parsed, transcript_path)
+        output = _dict_to_meeting(parsed, transcript_path, recording_time=recording_time)
 
     output.metadata.update({
         "llm_backend": llm_backend,
         "llm_model": llm_model,
         "source_transcript": transcript_path.name,
     })
+    if recording_time is not None:
+        output.metadata.update({
+            "recording_date": recording_time.iso_date,
+            "recording_date_source": recording_time.source,
+        })
 
     if output_format in ("json", "both"):
         json_path.write_text(
@@ -304,7 +313,12 @@ def _write_structured_output(
     return md_path if output_format != "json" else json_path
 
 
-def _dict_to_meeting(data: Dict[str, Any], transcript_path: Path) -> MeetingNotes:
+def _dict_to_meeting(
+    data: Dict[str, Any],
+    transcript_path: Path,
+    *,
+    recording_time: Optional[ResolvedRecordingTime] = None,
+) -> MeetingNotes:
     speaker_identities = [
         SpeakerIdentity(
             speaker_id=item.get("speaker_id", "UNKNOWN"),
@@ -337,9 +351,10 @@ def _dict_to_meeting(data: Dict[str, Any], transcript_path: Path) -> MeetingNote
     decisions = _parse_decisions(data.get("decisions", []))
     follow_ups = _parse_follow_ups(data.get("follow_ups", []))
 
+    authoritative_date = recording_time.iso_date if recording_time else ""
     return MeetingNotes(
         title=data.get("title") or transcript_path.stem,
-        date=data.get("date") or "",
+        date=authoritative_date or data.get("date") or "",
         meeting_type=data.get("meeting_type"),
         executive_summary=data.get("executive_summary", ""),
         topics=data.get("topics", []),
@@ -383,7 +398,12 @@ def _parse_follow_ups(raw: List[Any]) -> List[FollowUp]:
     return follow_ups
 
 
-def _dict_to_creative(data: Dict[str, Any], transcript_path: Path) -> CreativeOutput:
+def _dict_to_creative(
+    data: Dict[str, Any],
+    transcript_path: Path,
+    *,
+    recording_time: Optional[ResolvedRecordingTime] = None,
+) -> CreativeOutput:
     sparks = [
         CreativeSpark(
             title=s.get("title", "Untitled"),
@@ -395,9 +415,10 @@ def _dict_to_creative(data: Dict[str, Any], transcript_path: Path) -> CreativeOu
         )
         for s in data.get("sparks", [])
     ]
+    authoritative_date = recording_time.iso_date if recording_time else ""
     return CreativeOutput(
         title=data.get("title") or transcript_path.stem,
-        date=data.get("date") or "",
+        date=authoritative_date or data.get("date") or "",
         creative_summary=data.get("creative_summary", ""),
         themes=data.get("themes", []),
         sparks=sparks,

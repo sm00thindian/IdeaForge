@@ -2,6 +2,15 @@
 
 All notable changes to IdeaForge are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.9.0] - 2026-06-30
+
+### Added
+
+- **MP3/FLAC ingest** — `normalize_audio` (default `true`) converts non-WAV sources to PCM WAV via ffmpeg before merge/transcribe/diarize.
+- **Non-segmented splitting** — `chunk_mode` (`gap` | `silence` | `fixed_window` | `none`) splits long non-`R*` files into sessions.
+- **Clock skew policy** — Archive folders and session dates use `recset.txt` > filename > mtime (`session_time.py`).
+- **Summary frontmatter** — `*_summary.md` includes YAML `date` and `recording_date_source` when authoritative dating is known.
+
 ## [0.8.0] - 2026-06-30
 
 ### Added
@@ -143,6 +152,7 @@ All notable changes to IdeaForge are documented here. Format follows [Keep a Cha
 
 Prior releases were not changelogged in-repo. See git history for daemon, Grok/Claude/Ollama backends, faster-whisper + pyannote diarization, and USB ingest.
 
+[0.9.0]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.9.0
 [0.8.0]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.8.0
 [0.7.1]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.7.1
 [0.7.0]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.7.0

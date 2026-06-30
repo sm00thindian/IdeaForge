@@ -118,9 +118,9 @@ profile = "generic_wav"
 
 ### Phase B — Heterogeneous formats (0.9.0)
 
-- [ ] **MP3/FLAC ingest** — Normalize to WAV via ffmpeg before transcribe (config flag).
-- [ ] **Non-segmented recorders** — Single long file per day; chunk by silence or fixed window instead of filename gaps.
-- [ ] **Clock skew policy** — Prefer device `recset.txt` when present, else filename, else mtime; document in notes frontmatter.
+- [x] **MP3/FLAC ingest** — Normalize to WAV via ffmpeg before transcribe (`normalize_audio` config flag) (0.9.0).
+- [x] **Non-segmented recorders** — `chunk_mode = silence | fixed_window` splits long non-`R*` files (0.9.0).
+- [x] **Clock skew policy** — `recset.txt` > filename > mtime; YAML frontmatter in `*_summary.md` (0.9.0).
 
 ### Phase C — Fleet ops (1.0.0)
 

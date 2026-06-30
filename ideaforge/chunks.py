@@ -2,21 +2,24 @@
 
 from __future__ import annotations
 
-import re
 import wave
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List, Optional, Sequence
+from typing import List, Literal, Optional, Sequence
 
-from ideaforge.audio_util import get_audio_duration_seconds
-
-# Z28/Z29: RYYYY-MM-DD-HH-MM-SS.WAV
-RECORDING_STEM_PATTERN = re.compile(
-    r"^R(?P<year>\d{4})-(?P<month>\d{2})-(?P<day>\d{2})-"
-    r"(?P<hour>\d{2})-(?P<minute>\d{2})-(?P<second>\d{2})$",
-    re.IGNORECASE,
+from ideaforge.audio_util import (
+    get_audio_duration_seconds,
+    split_audio_by_silence,
+    split_audio_fixed_window,
 )
+from ideaforge.session_time import (
+    ResolvedRecordingTime,
+    parse_recording_timestamp,
+    resolve_recording_datetime,
+)
+
+ChunkMode = Literal["gap", "silence", "fixed_window", "none"]
 
 
 @dataclass(frozen=True)
@@ -33,6 +36,7 @@ class RecordingChunk:
 @dataclass(frozen=True)
 class RecordingGroup:
     chunks: tuple[RecordingChunk, ...]
+    recording_time: Optional[ResolvedRecordingTime] = None
 
     @property
     def files(self) -> List[Path]:
@@ -55,31 +59,22 @@ class RecordingGroup:
         return self.chunks[0].start
 
 
-def parse_recording_timestamp(path: Path) -> Optional[datetime]:
-    """Parse recorder filename timestamp, or None for non-recorder names."""
-    match = RECORDING_STEM_PATTERN.match(path.stem)
-    if not match:
-        return None
-    parts = {key: int(value) for key, value in match.groupdict().items()}
-    return datetime(
-        parts["year"],
-        parts["month"],
-        parts["day"],
-        parts["hour"],
-        parts["minute"],
-        parts["second"],
-    )
-
-
-def _chunk_from_path(path: Path) -> RecordingChunk:
-    start = parse_recording_timestamp(path)
-    if start is None:
-        start = datetime.fromtimestamp(path.stat().st_mtime)
+def _chunk_from_path(
+    path: Path,
+    *,
+    device_clock: Optional[datetime] = None,
+) -> RecordingChunk:
+    resolved = resolve_recording_datetime(path, device_clock=device_clock)
     try:
         duration_seconds = get_audio_duration_seconds(path)
-    except (OSError, wave.Error):
+    except (OSError, wave.Error, ValueError):
         duration_seconds = 0.0
-    return RecordingChunk(path=path, start=start, duration_seconds=duration_seconds)
+    return RecordingChunk(path=path, start=resolved.dt, duration_seconds=duration_seconds)
+
+
+def _group_recording_time(chunks: Sequence[RecordingChunk]) -> ResolvedRecordingTime:
+    first = chunks[0]
+    return resolve_recording_datetime(first.path)
 
 
 def chunks_are_continuation(
@@ -121,7 +116,13 @@ def group_recordings(
         return []
 
     if not enabled:
-        return [RecordingGroup(( _chunk_from_path(path),)) for path in files]
+        return [
+            RecordingGroup(
+                (_chunk_from_path(path),),
+                recording_time=_group_recording_time((_chunk_from_path(path),)),
+            )
+            for path in files
+        ]
 
     recorder_chunks: List[RecordingChunk] = []
     singletons: List[RecordingChunk] = []
@@ -149,14 +150,137 @@ def group_recordings(
         ):
             current.append(chunk)
         else:
-            groups.append(RecordingGroup(tuple(current)))
+            groups.append(
+                RecordingGroup(
+                    tuple(current),
+                    recording_time=_group_recording_time(current),
+                )
+            )
             current = [chunk]
 
     if current:
-        groups.append(RecordingGroup(tuple(current)))
+        groups.append(
+            RecordingGroup(
+                tuple(current),
+                recording_time=_group_recording_time(current),
+            )
+        )
 
     for chunk in sorted(singletons, key=lambda item: item.start):
-        groups.append(RecordingGroup((chunk,)))
+        groups.append(RecordingGroup((chunk,), recording_time=_group_recording_time((chunk,))))
 
     groups.sort(key=lambda group: group.sort_key)
     return groups
+
+
+def _should_split_singleton(group: RecordingGroup) -> bool:
+    if len(group.chunks) != 1:
+        return False
+    return parse_recording_timestamp(group.chunks[0].path) is None
+
+
+def expand_long_recordings(
+    groups: List[RecordingGroup],
+    *,
+    chunk_mode: ChunkMode = "gap",
+    split_silence_seconds: float = 3.0,
+    split_window_seconds: float = 900.0,
+    min_split_duration_seconds: float = 60.0,
+) -> List[RecordingGroup]:
+    """
+    Split non-segmented (non-``R*``) long files into sessions.
+
+    ``chunk_mode``:
+    - ``gap`` / ``none`` — no splitting (gap merge handled by ``group_recordings``)
+    - ``silence`` — split on silence gaps >= ``split_silence_seconds``
+    - ``fixed_window`` — split every ``split_window_seconds``
+    """
+    if chunk_mode not in ("silence", "fixed_window"):
+        return groups
+
+    expanded: List[RecordingGroup] = []
+    for group in groups:
+        if not _should_split_singleton(group):
+            expanded.append(group)
+            continue
+
+        source = group.chunks[0].path
+        try:
+            duration = get_audio_duration_seconds(source)
+        except (OSError, wave.Error, ValueError):
+            expanded.append(group)
+            continue
+
+        if duration < min_split_duration_seconds:
+            expanded.append(group)
+            continue
+
+        work_dir = source.parent
+        if chunk_mode == "silence":
+            parts = split_audio_by_silence(
+                source,
+                work_dir,
+                min_silence_seconds=split_silence_seconds,
+            )
+        else:
+            parts = split_audio_fixed_window(
+                source,
+                work_dir,
+                window_seconds=split_window_seconds,
+            )
+
+        if len(parts) <= 1:
+            expanded.append(group)
+            continue
+
+        base_start = group.chunks[0].start
+        offset_seconds = 0.0
+        for part_path in parts:
+            try:
+                part_duration = get_audio_duration_seconds(part_path)
+            except (OSError, wave.Error, ValueError):
+                part_duration = 0.0
+            chunk = RecordingChunk(
+                path=part_path,
+                start=base_start + timedelta(seconds=offset_seconds),
+                duration_seconds=part_duration,
+            )
+            offset_seconds += part_duration
+            expanded.append(
+                RecordingGroup(
+                    (chunk,),
+                    recording_time=group.recording_time or _group_recording_time((chunk,)),
+                )
+            )
+
+    expanded.sort(key=lambda item: item.sort_key)
+    return expanded
+
+
+def prepare_session_groups(
+    files: Sequence[Path],
+    *,
+    merge_chunks: bool = True,
+    chunk_mode: ChunkMode = "gap",
+    chunk_gap_seconds: float = 30.0,
+    merge_min_chunk_seconds: float = 600.0,
+    split_silence_seconds: float = 3.0,
+    split_window_seconds: float = 900.0,
+) -> List[RecordingGroup]:
+    """Group recorder chunks and optionally split long non-segmented files."""
+    groups = group_recordings(
+        files,
+        enabled=merge_chunks and chunk_mode == "gap",
+        chunk_gap_seconds=chunk_gap_seconds,
+        merge_min_chunk_seconds=merge_min_chunk_seconds,
+    )
+    if chunk_mode == "gap":
+        return groups
+    if not merge_chunks and chunk_mode != "gap":
+        groups = group_recordings(files, enabled=False)
+    return expand_long_recordings(
+        groups,
+        chunk_mode=chunk_mode,
+        split_silence_seconds=split_silence_seconds,
+        split_window_seconds=split_window_seconds,
+    )

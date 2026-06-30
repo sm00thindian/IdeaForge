@@ -8,7 +8,7 @@ from contextlib import nullcontext
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from ideaforge.audio_util import concat_wav_files
+from ideaforge.audio_util import concat_wav_files, ensure_pipeline_audio
 from ideaforge.chunks import RecordingGroup
 from ideaforge.config import IdeaForgeConfig
 from ideaforge.device import is_path_on_recorder
@@ -167,11 +167,13 @@ def process_group(
     log_lock: Optional[threading.Lock] = None,
 ) -> tuple[int, int, RecordingResult]:
     """Process one recording session. Returns (processed, skipped, brief)."""
-    work_folder = (
-        archive_folder_for_file(group.files[0], archive)
-        if stages.copy
-        else group.files[0].parent
-    )
+    if stages.copy:
+        if group.recording_time is not None:
+            work_folder = archive / group.recording_time.date_folder
+        else:
+            work_folder = archive_folder_for_file(group.files[0], archive)
+    else:
+        work_folder = group.files[0].parent
     reporter = active_reporter()
     session_tracker = (
         reporter.track_session() if reporter is not None else nullcontext()
@@ -292,19 +294,28 @@ def _process_group_body(
         for audio_file in group.files:
             archive_copies[audio_file] = audio_file
 
-    if len(copied_paths) > 1:
+    pipeline_paths = [
+        ensure_pipeline_audio(
+            path,
+            work_folder,
+            normalize_audio=cfg.normalize_audio,
+        )
+        for path in copied_paths
+    ]
+
+    if len(pipeline_paths) > 1:
         if reporter is not None:
             reporter.set_step_active(
                 StepId.MERGE,
-                detail=f"Joining {len(copied_paths)} chunks",
+                detail=f"Joining {len(pipeline_paths)} chunks",
             )
-        merged_name = f"{session_stem}_merged{copied_paths[0].suffix}"
-        process_path = concat_wav_files(copied_paths, work_folder / merged_name)
-        print(f"   🔗 Merged {len(copied_paths)} chunks → {process_path.name}")
+        merged_name = f"{session_stem}_merged.wav"
+        process_path = concat_wav_files(pipeline_paths, work_folder / merged_name)
+        print(f"   🔗 Merged {len(pipeline_paths)} chunks → {process_path.name}")
         if reporter is not None:
             reporter.mark_step_done(StepId.MERGE)
     else:
-        process_path = copied_paths[0]
+        process_path = pipeline_paths[0]
         if reporter is not None and stages.transcribe:
             reporter.skip_step(StepId.MERGE)
 
@@ -368,6 +379,7 @@ def _process_group_body(
             force=force,
             archive=archive,
             export_settings=export_settings,
+            recording_time=group.recording_time,
         )
         if reporter is not None:
             reporter.mark_step_done(StepId.SUMMARIZE)

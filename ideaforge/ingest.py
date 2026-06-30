@@ -65,10 +65,17 @@ def should_skip_by_hash(file_path: Path, processed_log: ProcessedLogLike) -> boo
         return False
 
 
-def archive_folder_for_file(audio_file: Path, archive_root: Path) -> Path:
-    """Place files in dated folders based on recording mtime."""
-    mtime = datetime.fromtimestamp(audio_file.stat().st_mtime)
-    return archive_root / mtime.strftime("%Y-%m-%d")
+def archive_folder_for_file(
+    audio_file: Path,
+    archive_root: Path,
+    *,
+    device_clock: Optional[datetime] = None,
+) -> Path:
+    """Place files in dated folders (recset > filename > mtime)."""
+    from ideaforge.session_time import resolve_recording_datetime
+
+    resolved = resolve_recording_datetime(audio_file, device_clock=device_clock)
+    return archive_root / resolved.date_folder
 
 
 def copy_file_safely(src: Path, dest_folder: Path) -> Path:
@@ -186,6 +193,10 @@ def ingest_device_recordings(
     if not device_files:
         return result
 
+    device_clock: Optional[datetime] = None
+    if device is not None and device.profile is not None:
+        device_clock = device.profile.read_device_clock(source)
+
     processed_log = load_processed_log(archive)
     total = len(device_files)
 
@@ -201,7 +212,11 @@ def ingest_device_recordings(
     for index, audio_file in enumerate(device_files, start=1):
         archive_copy = find_archive_copy(audio_file, archive, processed_log)
         if archive_copy is None:
-            dest_folder = archive_folder_for_file(audio_file, archive)
+            dest_folder = archive_folder_for_file(
+                audio_file,
+                archive,
+                device_clock=device_clock,
+            )
             archive_copy = copy_file_safely(audio_file, dest_folder)
             result.files_copied += 1
             print(f"   📋 Copied {audio_file.name} → {archive_copy.parent.name}/")

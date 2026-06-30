@@ -41,8 +41,12 @@ SECTION_KEYS: Dict[str, Set[str]] = {
         "diarize",
         "min_file_size_bytes",
         "merge_chunks",
+        "chunk_mode",
         "chunk_gap_seconds",
         "merge_min_chunk_seconds",
+        "split_silence_seconds",
+        "split_window_seconds",
+        "normalize_audio",
         "max_parallel_sessions",
     },
     "diarization": {"hf_token", "min_speakers", "max_speakers"},
@@ -67,6 +71,7 @@ SECTION_KEYS: Dict[str, Set[str]] = {
 }
 
 DEVICE_PROFILES = {"z28", "generic_wav"}
+CHUNK_MODES = {"gap", "silence", "fixed_window", "none"}
 
 LLM_BACKENDS = {"auto", "ollama", "grok", "claude"}
 WHISPER_BACKENDS = {"auto", "mlx", "faster"}
@@ -132,6 +137,15 @@ def validate_config_values(cfg: IdeaForgeConfig) -> List[str]:
         issues.append("processing.chunk_gap_seconds must be >= 0")
     if cfg.merge_min_chunk_seconds < 0:
         issues.append("processing.merge_min_chunk_seconds must be >= 0")
+    if cfg.chunk_mode not in CHUNK_MODES:
+        issues.append(
+            f"invalid processing.chunk_mode '{cfg.chunk_mode}' "
+            f"(expected one of {sorted(CHUNK_MODES)})"
+        )
+    if cfg.split_silence_seconds <= 0:
+        issues.append("processing.split_silence_seconds must be > 0")
+    if cfg.split_window_seconds <= 0:
+        issues.append("processing.split_window_seconds must be > 0")
 
     device_names: Set[str] = set()
     for device in cfg.devices:
