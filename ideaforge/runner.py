@@ -21,13 +21,18 @@ from ideaforge.config import IdeaForgeConfig
 from ideaforge.device import is_path_on_recorder
 from ideaforge.ingest import (
     archive_folder_for_file,
+    archive_paths_for_failed_sessions,
+    clear_session_failure,
     compute_file_hash,
     copy_file_safely,
+    expand_scope_files,
+    failed_session_stems,
     find_archive_copy,
     get_audio_files,
     is_derived_audio,
     load_processed_log,
     record_processed,
+    record_session_failure,
     remove_device_file_after_copy,
     save_processed_log,
 )
@@ -166,25 +171,71 @@ def _process_group(
     session_tracker = (
         reporter.track_session() if reporter is not None else nullcontext()
     )
+    file_hashes = _hash_group_files(group)
     with session_tracker:
-        return _process_group_body(
-            group,
-            archive,
-            cfg,
-            stages,
-            processed_log,
-            force=force,
-            delete_from_device=delete_from_device,
-            export_settings=export_settings,
-            session_index=session_index,
-            sessions_total=sessions_total,
-            log_lock=log_lock,
-            reporter=reporter,
-            file_hashes=_hash_group_files(group),
-            work_folder=work_folder,
-            session_stem=group.session_stem,
-            paths=_output_paths(work_folder, group.session_stem),
-        )
+        try:
+            return _process_group_body(
+                group,
+                archive,
+                cfg,
+                stages,
+                processed_log,
+                force=force,
+                delete_from_device=delete_from_device,
+                export_settings=export_settings,
+                session_index=session_index,
+                sessions_total=sessions_total,
+                log_lock=log_lock,
+                reporter=reporter,
+                file_hashes=file_hashes,
+                work_folder=work_folder,
+                session_stem=group.session_stem,
+                paths=_output_paths(work_folder, group.session_stem),
+            )
+        except Exception as exc:
+            _record_failure_locked(
+                processed_log,
+                log_lock=log_lock,
+                group=group,
+                archive=archive,
+                work_folder=work_folder,
+                file_hashes=file_hashes,
+                exc=exc,
+                stages=stages,
+            )
+            raise
+
+
+def _record_failure_locked(
+    processed_log: dict,
+    *,
+    log_lock: Optional[threading.Lock],
+    group: RecordingGroup,
+    archive: Path,
+    work_folder: Path,
+    file_hashes: Dict[Path, str],
+    exc: Exception,
+    stages: PipelineStages,
+) -> None:
+    archive_files = list(group.files)
+    if stages.copy:
+        archive_files = [
+            find_archive_copy(audio_file, archive, processed_log) or audio_file
+            for audio_file in group.files
+        ]
+    payload = dict(
+        session_stem=group.session_stem,
+        archive_folder=work_folder,
+        archive_files=archive_files,
+        chunk_hashes=list(file_hashes.values()),
+        error=str(exc),
+        pipeline=stages.label,
+    )
+    if log_lock is None:
+        record_session_failure(processed_log, **payload)
+        return
+    with log_lock:
+        record_session_failure(processed_log, **payload)
 
 
 def _record_processed_locked(
@@ -243,8 +294,15 @@ def _process_group_body(
         )
 
     processed_hashes = processed_log.get("hashes", [])
+    is_failed_retry = session_stem in processed_log.get("failures", {})
+    if is_failed_retry:
+        prior = processed_log["failures"][session_stem]
+        print(
+            f"\n↻ Retrying failed session {group.label} "
+            f"({prior.get('error', 'unknown error')})"
+        )
 
-    if should_skip_group(
+    if not is_failed_retry and should_skip_group(
         stages=stages,
         force=force,
         chunk_hashes=list(file_hashes.values()),
@@ -381,6 +439,12 @@ def _process_group_body(
                 file_hash=file_hash,
             )
 
+    if log_lock is None:
+        clear_session_failure(processed_log, session_stem)
+    else:
+        with log_lock:
+            clear_session_failure(processed_log, session_stem)
+
     if delete_from_device:
         for audio_file, archive_copy in archive_copies.items():
             _try_remove_from_device(audio_file, archive_copy, enabled=True)
@@ -401,14 +465,31 @@ def process_source(
     show_header: bool = True,
     show_progress: bool = True,
     scope_files: Optional[List[Path]] = None,
+    retry_failed_only: bool = False,
+    include_failed_retries: bool = True,
 ) -> ProcessResult:
     """Run the configured pipeline on all audio files under source."""
     extensions: Set[str] = set(cfg.audio_extensions)
-    if scope_files is not None:
+    processed_log = load_processed_log(archive)
+
+    if retry_failed_only:
+        scoped = archive_paths_for_failed_sessions(
+            processed_log,
+            min_size_bytes=cfg.min_file_size_bytes,
+        )
+    else:
+        scoped = expand_scope_files(
+            scope_files,
+            processed_log,
+            min_size_bytes=cfg.min_file_size_bytes,
+            include_failures=include_failed_retries,
+        )
+
+    if scoped is not None:
         audio_files = sorted(
             {
                 path
-                for path in scope_files
+                for path in scoped
                 if path.is_file()
                 and path.stat().st_size >= cfg.min_file_size_bytes
                 and not is_derived_audio(path)
@@ -440,8 +521,10 @@ def process_source(
 
     device_label = source.name
     reporter = StatusReporter()
-    processed_log = load_processed_log(archive)
     result = ProcessResult()
+    failed_pending = failed_session_stems(processed_log)
+    if failed_pending:
+        print(f"   ↻ Retrying {len(failed_pending)} failed session(s) from prior run")
     workers = min(cfg.max_parallel_sessions, len(groups))
     log_lock = threading.Lock() if workers > 1 else None
 

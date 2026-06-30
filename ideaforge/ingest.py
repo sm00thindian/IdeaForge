@@ -46,14 +46,31 @@ def get_audio_files(
     return sorted(valid, key=lambda p: p.stat().st_mtime)
 
 
+def _empty_processed_log() -> Dict[str, Any]:
+    return {"hashes": [], "files": {}, "failures": {}}
+
+
+def normalize_processed_log(log: Dict[str, Any]) -> Dict[str, Any]:
+    """Ensure expected keys exist after load or partial writes."""
+    if "hashes" not in log:
+        log["hashes"] = []
+    if "files" not in log:
+        log["files"] = {}
+    if "failures" not in log:
+        log["failures"] = {}
+    return log
+
+
 def load_processed_log(archive: Path) -> Dict[str, Any]:
     log_path = archive / ".processed_log.json"
     if log_path.exists():
         try:
-            return json.loads(log_path.read_text(encoding="utf-8"))
+            return normalize_processed_log(
+                json.loads(log_path.read_text(encoding="utf-8"))
+            )
         except (json.JSONDecodeError, OSError):
             pass
-    return {"hashes": [], "files": {}}
+    return _empty_processed_log()
 
 
 def save_processed_log(archive: Path, log: Dict[str, Any]) -> None:
@@ -233,6 +250,83 @@ def ingest_device_recordings(
             f" ({result.files_deleted} removed from device)"
         )
     return result
+
+
+def record_session_failure(
+    log: Dict[str, Any],
+    *,
+    session_stem: str,
+    archive_folder: Path,
+    archive_files: List[Path],
+    chunk_hashes: List[str],
+    error: str,
+    pipeline: str,
+) -> None:
+    normalize_processed_log(log)
+    log["failures"][session_stem] = {
+        "session_stem": session_stem,
+        "archive_folder": str(archive_folder),
+        "archive_files": [str(path) for path in archive_files],
+        "chunk_hashes": chunk_hashes,
+        "error": error,
+        "pipeline": pipeline,
+        "failed_at": datetime.now().isoformat(timespec="seconds"),
+    }
+
+
+def clear_session_failure(log: Dict[str, Any], session_stem: str) -> None:
+    normalize_processed_log(log)
+    log["failures"].pop(session_stem, None)
+
+
+def failed_session_stems(log: Dict[str, Any]) -> Set[str]:
+    return set(normalize_processed_log(log).get("failures", {}).keys())
+
+
+def archive_paths_for_failed_sessions(
+    log: Dict[str, Any],
+    *,
+    min_size_bytes: int = 50_000,
+) -> List[Path]:
+    """Return archive audio paths for sessions recorded in the failure log."""
+    paths: List[Path] = []
+    seen: Set[str] = set()
+    for entry in normalize_processed_log(log).get("failures", {}).values():
+        for path_str in entry.get("archive_files", []):
+            candidate = Path(path_str)
+            key = str(candidate)
+            if key in seen or not candidate.is_file():
+                continue
+            try:
+                if candidate.stat().st_size < min_size_bytes:
+                    continue
+            except OSError:
+                continue
+            if is_derived_audio(candidate):
+                continue
+            seen.add(key)
+            paths.append(candidate)
+    return sorted(paths, key=lambda p: p.stat().st_mtime)
+
+
+def expand_scope_files(
+    scope_files: Optional[List[Path]],
+    log: Dict[str, Any],
+    *,
+    min_size_bytes: int = 50_000,
+    include_failures: bool = True,
+) -> Optional[List[Path]]:
+    """Merge explicit scope with failed-session archive paths for retry."""
+    if scope_files is None and not include_failures:
+        return None
+    merged: Set[Path] = set(scope_files or [])
+    if include_failures:
+        merged.update(
+            archive_paths_for_failed_sessions(log, min_size_bytes=min_size_bytes)
+        )
+    if not merged:
+        return scope_files
+    return sorted(merged, key=lambda p: p.stat().st_mtime)
 
 
 def record_processed(

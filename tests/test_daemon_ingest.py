@@ -35,9 +35,8 @@ def test_daemon_process_device_ingests_then_processes_archive(tmp_path: Path):
     ingest = IngestResult(archive_files=[archive_copy], files_verified=1, files_deleted=1)
 
     with (
-        patch("ideaforge.daemon.ingest_device_recordings", return_value=ingest),
-        patch("ideaforge.daemon.get_audio_files", return_value=[]),
-        patch("ideaforge.daemon.unmount_volume", return_value=True) as unmount,
+        patch("ideaforge.daemon.run_device_ingest", return_value=ingest),
+        patch("ideaforge.daemon.load_processed_log", return_value={"failures": {}}),
         patch("ideaforge.daemon.process_source", return_value=ProcessResult(files_processed=1)) as process,
     ):
         result = daemon_process_device(
@@ -48,7 +47,6 @@ def test_daemon_process_device_ingests_then_processes_archive(tmp_path: Path):
         )
 
     assert result.files_processed == 1
-    unmount.assert_called_once_with(device.mount_path)
     process.assert_called_once()
     call_kwargs = process.call_args.kwargs
     stages_arg = process.call_args[0][3]
@@ -66,15 +64,36 @@ def test_daemon_process_device_skips_unmount_on_ingest_failure(tmp_path: Path):
     ingest = IngestResult(files_failed=1)
 
     with (
-        patch("ideaforge.daemon.ingest_device_recordings", return_value=ingest),
-        patch("ideaforge.daemon.unmount_volume") as unmount,
+        patch("ideaforge.daemon.run_device_ingest", return_value=ingest),
+        patch("ideaforge.daemon.load_processed_log", return_value={"failures": {}}),
         patch("ideaforge.daemon.process_source") as process,
     ):
         result = daemon_process_device(device.mount_path, archive, cfg, stages)
 
     assert result.files_processed == 0
-    unmount.assert_not_called()
     process.assert_not_called()
+
+
+def test_daemon_process_device_retries_failures_without_new_ingest(tmp_path: Path):
+    device = _device(tmp_path)
+    archive = tmp_path / "IdeaForge"
+    cfg = IdeaForgeConfig(archive=archive)
+    stages = PipelineStages(copy=True, transcribe=True, diarize=False, llm=False)
+    empty_ingest = IngestResult()
+
+    with (
+        patch("ideaforge.daemon.run_device_ingest", return_value=empty_ingest),
+        patch(
+            "ideaforge.daemon.load_processed_log",
+            return_value={"failures": {"R2026-06-27-07-43-11": {}}},
+        ),
+        patch("ideaforge.daemon.process_source", return_value=ProcessResult(files_processed=1)) as process,
+    ):
+        result = daemon_process_device(device.mount_path, archive, cfg, stages)
+
+    assert result.files_processed == 1
+    process.assert_called_once()
+    assert process.call_args.kwargs["scope_files"] is None
 
 
 def test_watcher_uses_daemon_process_fn_by_default():

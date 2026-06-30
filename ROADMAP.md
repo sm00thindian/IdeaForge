@@ -31,8 +31,13 @@ Prioritized work after **0.5.0**. Items are grouped by tier (impact vs effort) a
 
 ### 0.5.2 patch targets
 
-- [ ] **Failed session state** — Persist failures in `.processed_log.json` or a separate failure log for retry.
-- [ ] **Ingest-only dry run** — `ideaforge --ingest-only` for testing copy/verify/unmount without ML.
+- [x] **Failed session state** — Persist failures in `.processed_log.json`; auto-retry on next run; `--retry-failed` for manual retry.
+- [x] **Ingest-only dry run** — `ideaforge --ingest-only` for testing copy/verify/unmount without ML.
+
+### 0.5.3 patch targets
+
+- [ ] **`ideaforge status`** — Print `status.json`, daemon/menubar health, pending failure count.
+- [ ] **Failure notification** — macOS alert when a session fails (optional config).
 
 ---
 

@@ -11,7 +11,12 @@ from typing import Callable, Dict, Optional, Set
 
 from ideaforge.config import IdeaForgeConfig
 from ideaforge.device import RecorderDevice, find_recorder_mounts, unmount_volume
-from ideaforge.ingest import get_audio_files, ingest_device_recordings
+from ideaforge.ingest import (
+    IngestResult,
+    get_audio_files,
+    ingest_device_recordings,
+    load_processed_log,
+)
 from ideaforge.pipeline import PipelineStages, resolve_stages
 from ideaforge.notify import ProcessResult, notify_process_complete
 from ideaforge.runner import process_source
@@ -48,6 +53,57 @@ def snapshot_device(device: RecorderDevice) -> DeviceSnapshot:
     return DeviceSnapshot.from_device(device)
 
 
+def maybe_unmount_device(
+    source: Path,
+    cfg: IdeaForgeConfig,
+    ingest: IngestResult,
+) -> bool:
+    """Unmount recorder volume when ingest succeeded and RECORD/ is empty."""
+    if not cfg.daemon_unmount_after_ingest or not ingest.device_cleared:
+        return False
+    extensions = set(cfg.audio_extensions)
+    remaining = get_audio_files(source, extensions, cfg.min_file_size_bytes)
+    if remaining:
+        return False
+    label = source.name
+    if unmount_volume(source):
+        print(f"   📴 Unmounted {label}")
+        return True
+    print(f"   ⚠️  Could not unmount {label}")
+    return False
+
+
+def run_device_ingest(
+    source: Path,
+    archive: Path,
+    cfg: IdeaForgeConfig,
+    *,
+    delete_after_copy: Optional[bool] = None,
+    unmount_after: Optional[bool] = None,
+    reporter: Optional[StatusReporter] = None,
+) -> IngestResult:
+    """Copy device recordings to archive, verify, optionally purge and unmount."""
+    delete = (
+        cfg.daemon_delete_after_copy
+        if delete_after_copy is None
+        else delete_after_copy
+    )
+    ingest = ingest_device_recordings(
+        source,
+        archive,
+        cfg,
+        delete_after_copy=delete,
+        reporter=reporter,
+    )
+
+    if ingest.files_failed:
+        print("   ⚠️  Ingest incomplete — device will stay mounted")
+    elif unmount_after is not False:
+        maybe_unmount_device(source, cfg, ingest)
+
+    return ingest
+
+
 def daemon_process_device(
     source: Path,
     archive: Path,
@@ -63,30 +119,14 @@ def daemon_process_device(
     Daemon pipeline: ingest device files locally first (copy → verify → purge),
     optionally unmount, then transcribe/diarize/summarize from archive only.
     """
-    ingest = ingest_device_recordings(
-        source,
-        archive,
-        cfg,
-        delete_after_copy=cfg.daemon_delete_after_copy,
-        reporter=reporter,
-    )
+    ingest = run_device_ingest(source, archive, cfg, reporter=reporter)
 
-    if ingest.files_failed:
-        print("   ⚠️  Ingest incomplete — device will stay mounted")
-
-    if cfg.daemon_unmount_after_ingest and ingest.device_cleared:
-        extensions = set(cfg.audio_extensions)
-        remaining = get_audio_files(source, extensions, cfg.min_file_size_bytes)
-        if not remaining:
-            label = source.name
-            if unmount_volume(source):
-                print(f"   📴 Unmounted {label}")
-            else:
-                print(f"   ⚠️  Could not unmount {label}")
-
-    if not ingest.has_work:
+    processed_log = load_processed_log(archive)
+    has_failures = bool(processed_log.get("failures"))
+    if not ingest.has_work and not has_failures:
         return ProcessResult()
 
+    scope = ingest.archive_files if ingest.has_work else None
     return process_source(
         archive,
         archive,
@@ -95,7 +135,8 @@ def daemon_process_device(
         force=force,
         delete_from_device=False,
         export_settings=export_settings,
-        scope_files=ingest.archive_files,
+        scope_files=scope,
+        include_failed_retries=True,
     )
 
 

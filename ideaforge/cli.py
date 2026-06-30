@@ -9,7 +9,12 @@ from typing import Optional
 
 from ideaforge import __version__
 from ideaforge.config import IdeaForgeConfig, load_dotenv
-from ideaforge.device import auto_detect_source, describe_device, find_recorder_mounts
+from ideaforge.device import (
+    auto_detect_source,
+    describe_device,
+    find_recorder_mounts,
+    is_path_on_recorder,
+)
 from ideaforge.ingest import get_audio_files
 from ideaforge.pipeline import resolve_stages
 from ideaforge.runner import process_source
@@ -26,6 +31,8 @@ def build_parser() -> argparse.ArgumentParser:
   ideaforge --source ~/IdeaForge/2026-06-27 --llm-only --force
   ideaforge --source ~/IdeaForge/2026-06-27 --diarize-only --no-copy
   ideaforge --auto-source --transcribe-only
+  ideaforge --auto-source --ingest-only
+  ideaforge --source ~/IdeaForge --retry-failed
   ideaforge --source /Volumes/Z29 --mode meeting --diarize
 """,
     )
@@ -76,8 +83,23 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Summarize existing transcript only (skip copy, transcribe, diarize)",
     )
+    stage.add_argument(
+        "--ingest-only",
+        action="store_true",
+        help="Copy, verify, and purge device files only (no transcribe/LLM)",
+    )
 
     parser.add_argument("--no-copy", action="store_true", help="Skip copying to archive")
+    parser.add_argument(
+        "--no-unmount",
+        action="store_true",
+        help="With --ingest-only, skip unmount after successful ingest",
+    )
+    parser.add_argument(
+        "--retry-failed",
+        action="store_true",
+        help="Process only sessions that failed in a prior run",
+    )
     parser.add_argument("--no-transcribe", action="store_true", help="Skip transcription")
     parser.add_argument("--no-llm", action="store_true", help="Skip LLM summarization")
     parser.add_argument("--force", action="store_true", help="Reprocess even if outputs exist")
@@ -243,6 +265,33 @@ def main(argv: Optional[list] = None) -> int:
 
     archive = cfg.archive.expanduser().resolve()
 
+    if args.ingest_only:
+        source = resolve_source(args)
+        if source is None:
+            parser.error("--ingest-only requires --source or --auto-source")
+        if not source.exists() or not source.is_dir():
+            print(f"❌ Source not found: {source}")
+            return 1
+        if not is_path_on_recorder(source):
+            print("❌ --ingest-only requires a USB recorder mount (use --auto-source)")
+            return 1
+
+        from ideaforge.daemon import run_device_ingest
+
+        ingest = run_device_ingest(
+            source,
+            archive,
+            cfg,
+            unmount_after=not args.no_unmount,
+        )
+        if ingest.files_failed:
+            return 1
+        print(
+            f"\n✅ Ingest complete — {ingest.files_verified} verified, "
+            f"{ingest.files_deleted} removed from device"
+        )
+        return 0
+
     if args.export_only:
         if not args.source:
             parser.error("--export-only requires --source pointing to a folder with summaries")
@@ -278,6 +327,13 @@ def main(argv: Optional[list] = None) -> int:
             print(f"  {f.name}  ({size_mb:.1f} MB)")
         return 0
 
+    if args.retry_failed:
+        if args.auto_source:
+            print("❌ --retry-failed requires --source pointing at the archive root or session folder")
+            return 1
+        if args.source is None:
+            source = archive
+
     process_source(
         source,
         archive,
@@ -285,6 +341,7 @@ def main(argv: Optional[list] = None) -> int:
         stages,
         force=args.force,
         export_settings=resolve_export_settings(cfg, args),
+        retry_failed_only=args.retry_failed,
     )
     return 0
 

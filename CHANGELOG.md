@@ -2,6 +2,20 @@
 
 All notable changes to IdeaForge are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.2] - 2026-06-30
+
+### Added
+
+- **Failed session persistence** — Failures stored in `~/IdeaForge/.processed_log.json` under `failures`; automatically retried on the next daemon or manual run.
+- **`--retry-failed`** — Process only sessions that failed previously (`--source ~/IdeaForge`).
+- **`--ingest-only`** — Copy, verify, purge (and optionally unmount) without transcribe/LLM; for testing device ingest.
+- **`--no-unmount`** — Skip volume eject when used with `--ingest-only`.
+
+### Changed
+
+- Daemon retries pending failures even when no new files were ingested.
+- Successful sessions clear their entry from the failure log.
+
 ## [0.5.1] - 2026-06-30
 
 ### Added
@@ -44,5 +58,6 @@ All notable changes to IdeaForge are documented here. Format follows [Keep a Cha
 
 Prior releases were not changelogged in-repo. See git history for daemon, Grok/Claude/Ollama backends, faster-whisper + pyannote diarization, and USB ingest.
 
+[0.5.2]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.5.2
 [0.5.1]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.5.1
 [0.5.0]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.5.0

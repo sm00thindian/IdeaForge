@@ -236,6 +236,21 @@ tail -f ~/Library/Logs/ideaforge/daemon.log
 
 Manual `ideaforge --auto-source` still copies and processes in one pass (no auto-unmount).
 
+**Retry failed sessions** (stored in `~/IdeaForge/.processed_log.json`):
+
+```bash
+ideaforge --source ~/IdeaForge --retry-failed
+```
+
+The daemon also picks up pending failures automatically on the next plug-in (even if there are no new recordings).
+
+**Ingest only** (test copy/verify/purge without ML):
+
+```bash
+ideaforge --auto-source --ingest-only
+ideaforge --auto-source --ingest-only --no-unmount   # keep volume mounted
+```
+
 Notifications use the IdeaForge icon when [terminal-notifier](https://github.com/julienXX/terminal-notifier) is installed (`brew install terminal-notifier`). Without it, macOS falls back to the default Script Editor icon.
 
 Manual `ideaforge --auto-source` runs do **not** delete device files — only the daemon does.
@@ -576,7 +591,7 @@ scripts/
 - **Local by default** — audio and transcripts stay on your machine
 - **Cloud LLMs are opt-in** — Grok (auto default) needs `XAI_API_KEY`; Claude needs `ANTHROPIC_API_KEY` and `backend = "claude"`
 - **No telemetry** — no analytics, no cloud storage
-- **Dedup log** — `~/IdeaForge/.processed_log.json` tracks file hashes locally
+- **Dedup log** — `~/IdeaForge/.processed_log.json` tracks file hashes and failed sessions for retry
 
 ## Grok session continuity
 
