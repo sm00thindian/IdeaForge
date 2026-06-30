@@ -8,10 +8,13 @@ All notable changes to IdeaForge are documented here. Format follows [Keep a Cha
 
 - **Daemon clock sync** — Before ingest, read `recset.txt` and write system time when skew exceeds `clock_skew_threshold_seconds` (default 60s). Runs while the volume is still mounted, before copy/unmount.
 - **`ideaforge device clock --sync`** — Manually update `recset.txt` from the CLI (`--force` to always write).
+- **Archive layout docs** — README documents the `~/IdeaForge/YYYY-MM-DD/` tree, session stems, chunk merge artifacts, and runtime state paths.
+- **LaunchAgent reload guide** — README table for when to `launchctl kickstart` vs re-run `install-daemon.sh` after config, secrets, or code changes.
 
 ### Changed
 
 - Daemon and `--ingest-only` call clock sync first when `sync_device_clock = true` (default).
+- Troubleshooting and recorder-clock notes aligned with actual archive folder rules (mtime at ingest, filename session stems).
 
 ## [0.6.0] - 2026-06-30
 

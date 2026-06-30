@@ -56,8 +56,8 @@ Prioritized work after **0.5.0**. Items are grouped by tier (impact vs effort) a
 
 ### 0.6.1 patch targets
 
-- [ ] **Archive layout docs** — Document output tree in README (Tier 2 carry-over).
-- [ ] **LaunchAgent reload note** — When to `launchctl kickstart` after config/env changes.
+- [x] **Archive layout docs** — Document output tree in README (dated folders, session stems, pipeline artifacts).
+- [x] **LaunchAgent reload note** — When to `launchctl kickstart` after config/env changes.
 
 ---
 
@@ -69,8 +69,8 @@ Prioritized work after **0.5.0**. Items are grouped by tier (impact vs effort) a
 | **`ideaforge status`** | Print current `status.json` + daemon/menubar health (pgrep, lock files) |
 | **Recorder clock helper** | `ideaforge device clock` — read `recset.txt`, show skew vs system time, optional doc for fixing device date |
 | **Config validation** | Fail fast on unknown keys / bad paths at daemon start |
-| **Archive layout docs** | Document `sessions/`, `chunks/`, `notes/` tree in README |
-| **LaunchAgent reload note** | Single doc section: when to `launchctl kickstart` after config/env changes |
+| **Archive layout docs** | Document `~/IdeaForge/YYYY-MM-DD/` tree in README (done in 0.6.1) |
+| **LaunchAgent reload note** | Single doc section: when to `launchctl kickstart` after config/env changes (done in 0.6.1) |
 
 ### Tech debt (0.6.0)
 
