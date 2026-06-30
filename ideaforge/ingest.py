@@ -188,6 +188,7 @@ def ingest_device_recordings(
     Intended for daemon runs so transcription runs only on local copies.
     """
     from ideaforge.device import is_path_on_recorder
+    from ideaforge.status import Stage
 
     extensions: Set[str] = set(cfg.audio_extensions)
     device_files = get_audio_files(source, extensions, cfg.min_file_size_bytes)
@@ -201,7 +202,7 @@ def ingest_device_recordings(
     print(f"\n📥 Ingesting {total} recording(s) from device → archive")
     if reporter is not None:
         reporter.touch(
-            stage="Ingesting",
+            stage=Stage.INGESTING,
             progress=0.0,
             detail=f"0/{total} files copied",
             clear_progress=True,
@@ -220,7 +221,7 @@ def ingest_device_recordings(
             result.files_failed += 1
             if reporter is not None:
                 reporter.touch(
-                    stage="Ingesting",
+                    stage=Stage.INGESTING,
                     progress=index / total,
                     detail=f"{index}/{total} — verify failed for {audio_file.name}",
                 )
@@ -239,7 +240,7 @@ def ingest_device_recordings(
 
         if reporter is not None:
             reporter.touch(
-                stage="Ingesting",
+                stage=Stage.INGESTING,
                 progress=index / total,
                 detail=f"{index}/{total} files ingested",
             )

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ideaforge.audio_util import TARGET_SAMPLE_RATE, load_audio_mono_16k
-from ideaforge.status import active_reporter, status_touch
+from ideaforge.status import Stage, StepId, active_reporter, status_touch
 from ideaforge.transcription_types import SpeakerTurn, TranscriptSegment
 
 PIPELINE_MODELS = (
@@ -146,14 +146,14 @@ def diarize_audio(
         audio_np, _ = load_audio_mono_16k(audio_path)
         duration_min = max(1, int(len(audio_np) / TARGET_SAMPLE_RATE / 60))
         status_touch(
-            stage="Diarizing",
+            stage=Stage.DIARIZING,
             clear_progress=True,
             detail=f"Analyzing {audio_path.name} (~{duration_min} min audio)",
         )
         reporter = active_reporter()
         if reporter is not None:
             reporter.set_step_active(
-                "diarize",
+                StepId.DIARIZE,
                 detail=f"{audio_path.name} (~{duration_min} min)",
             )
         waveform = torch.from_numpy(audio_np).unsqueeze(0)
@@ -166,7 +166,7 @@ def diarize_audio(
 
         turns = _extract_turns(diarization)
         status_touch(
-            stage="Diarizing",
+            stage=Stage.DIARIZING,
             progress=1.0,
             detail=f"{len(turns)} speaker turns detected",
         )

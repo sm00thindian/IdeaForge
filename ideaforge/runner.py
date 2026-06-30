@@ -39,7 +39,13 @@ from ideaforge.ingest import (
 from ideaforge.llm import process_transcript
 from ideaforge.notify import ProcessResult, RecordingResult, notify_session_failure
 from ideaforge.pipeline import PipelineStages, should_skip_group
-from ideaforge.status import StatusReporter, active_reporter, build_step_plan
+from ideaforge.status import (
+    Stage,
+    StatusReporter,
+    StepId,
+    active_reporter,
+    build_step_plan,
+)
 from ideaforge.transcribe import diarize_existing, transcribe_audio
 
 
@@ -341,20 +347,20 @@ def _process_group_body(
     if stages.copy:
         print(f"\n📼 {group.label} → {work_folder.name}/")
         if reporter is not None:
-            reporter.set_step_active("copy", detail=f"0/{len(group.files)} files")
+            reporter.set_step_active(StepId.COPY, detail=f"0/{len(group.files)} files")
         for index, audio_file in enumerate(group.files, start=1):
             copied = copy_file_safely(audio_file, work_folder)
             copied_paths.append(copied)
             archive_copies[audio_file] = copied
             if reporter is not None:
                 reporter.touch(
-                    stage="Copying",
+                    stage=Stage.COPYING,
                     progress=index / len(group.files),
                     detail=f"{index}/{len(group.files)} files copied",
                 )
         print("   📥 Copied to archive")
         if reporter is not None:
-            reporter.mark_step_done("copy")
+            reporter.mark_step_done(StepId.COPY)
     else:
         print(f"\n📼 {group.label} (in-place)")
         copied_paths = list(group.files)
@@ -364,24 +370,24 @@ def _process_group_body(
     if len(copied_paths) > 1:
         if reporter is not None:
             reporter.set_step_active(
-                "merge",
+                StepId.MERGE,
                 detail=f"Joining {len(copied_paths)} chunks",
             )
         merged_name = f"{session_stem}_merged{copied_paths[0].suffix}"
         process_path = concat_wav_files(copied_paths, work_folder / merged_name)
         print(f"   🔗 Merged {len(copied_paths)} chunks → {process_path.name}")
         if reporter is not None:
-            reporter.mark_step_done("merge")
+            reporter.mark_step_done(StepId.MERGE)
     else:
         process_path = copied_paths[0]
         if reporter is not None and stages.transcribe:
-            reporter.skip_step("merge")
+            reporter.skip_step(StepId.MERGE)
 
     transcript_path = paths["transcript"]
 
     if stages.transcribe:
         if reporter is not None:
-            reporter.set_step_active("transcribe", detail=process_path.name)
+            reporter.set_step_active(StepId.TRANSCRIBE, detail=process_path.name)
         transcript_path = transcribe_audio(
             process_path,
             work_folder,
@@ -400,10 +406,10 @@ def _process_group_body(
             output_stem=session_stem,
         )
         if reporter is not None:
-            reporter.mark_step_done("transcribe")
+            reporter.mark_step_done(StepId.TRANSCRIBE)
     elif stages.diarize:
         if reporter is not None:
-            reporter.set_step_active("diarize", detail=process_path.name)
+            reporter.set_step_active(StepId.DIARIZE, detail=process_path.name)
         transcript_path = diarize_existing(
             process_path,
             work_folder,
@@ -415,7 +421,7 @@ def _process_group_body(
             output_stem=session_stem,
         )
         if reporter is not None:
-            reporter.mark_step_done("diarize")
+            reporter.mark_step_done(StepId.DIARIZE)
     elif stages.llm:
         if not transcript_path.exists():
             print(f"    ❌ Missing transcript: {transcript_path.name}")
@@ -425,7 +431,7 @@ def _process_group_body(
 
     if stages.llm and transcript_path and transcript_path.exists():
         if reporter is not None:
-            reporter.set_step_active("summarize", detail=transcript_path.stem)
+            reporter.set_step_active(StepId.SUMMARIZE, detail=transcript_path.stem)
         process_transcript(
             transcript_path,
             work_folder,
@@ -440,7 +446,7 @@ def _process_group_body(
             export_settings=export_settings,
         )
         if reporter is not None:
-            reporter.mark_step_done("summarize")
+            reporter.mark_step_done(StepId.SUMMARIZE)
 
     if stages.copy or stages.transcribe:
         for audio_file, file_hash in file_hashes.items():

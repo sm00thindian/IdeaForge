@@ -9,7 +9,13 @@ from ideaforge.menubar_app import (
     _menu_title_with_failures,
     _pending_failure_count,
 )
-from ideaforge.status import STATE_IDLE, STATE_PROCESSING, PipelineStatus, StatusReporter
+from ideaforge.status import (
+    STATE_IDLE,
+    STATE_PROCESSING,
+    Stage,
+    PipelineStatus,
+    StatusReporter,
+)
 
 
 def test_pending_failure_count(tmp_path: Path):
@@ -35,11 +41,11 @@ def test_menu_title_shows_failure_badge_when_idle():
 
 
 def test_menu_title_keeps_processing_title():
-    status = PipelineStatus(state=STATE_PROCESSING, stage="Transcribing")
+    status = PipelineStatus(state=STATE_PROCESSING, stage=Stage.TRANSCRIBING)
     reporter = StatusReporter(enabled=False)
     reporter._status = status
     title = _menu_title_with_failures(status, 3)
-    assert "Transcribing" in title or title.startswith("⟳")
+    assert Stage.TRANSCRIBING in title or title.startswith("⟳")
 
 
 def test_menubar_refresh_sets_failures_menu_item(tmp_path: Path):

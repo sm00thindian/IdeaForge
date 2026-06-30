@@ -2,6 +2,12 @@
 
 All notable changes to IdeaForge are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.6.2] - 2026-06-30
+
+### Changed
+
+- **Centralized stage constants** — `Stage`, `StepId`, and `StepLabel` in `status.py` replace scattered stage strings in daemon, ingest, runner, transcribe, diarize, and llm.
+
 ## [0.6.1] - 2026-06-30
 
 ### Added

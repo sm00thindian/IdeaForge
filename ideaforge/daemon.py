@@ -26,7 +26,7 @@ from ideaforge.ingest import (
 from ideaforge.pipeline import PipelineStages, resolve_stages
 from ideaforge.notify import ProcessResult, notify_process_complete
 from ideaforge.runner import process_source
-from ideaforge.status import StatusReporter
+from ideaforge.status import Stage, StatusReporter
 
 
 @dataclass(frozen=True)
@@ -93,7 +93,7 @@ def _maybe_sync_device_clock(
         return
 
     if reporter is not None:
-        reporter.touch(stage="Syncing clock")
+        reporter.touch(stage=Stage.SYNCING_CLOCK)
 
     result = sync_device_clock(
         device,

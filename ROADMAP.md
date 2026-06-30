@@ -74,7 +74,7 @@ Prioritized work after **0.5.0**. Items are grouped by tier (impact vs effort) a
 
 ### Tech debt (0.6.0)
 
-- [ ] **Centralize stage constants** — `status.py` stage strings used in runner/transcribe/diarize/llm; single enum or module.
+- [x] **Centralize stage constants** — `Stage`, `StepId`, `StepLabel` in `status.py` (0.6.2).
 - [ ] **State DB migrations** — Version schema; avoid silent breakage when adding columns.
 - [ ] **Reduce `runner.py` surface** — Extract session worker + pool into `pipeline.py` or `session_worker.py`.
 - [ ] **Type hints pass** — `config.py`, `ingest.py`, `chunks.py` for mypy-ready subset.

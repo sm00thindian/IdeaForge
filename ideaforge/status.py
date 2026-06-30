@@ -30,6 +30,45 @@ STATE_COMPLETE = "complete"
 STATE_ERROR = "error"
 
 
+class Stage:
+    """Pipeline and daemon stage labels written to ``status.stage``."""
+
+    SYNCING_CLOCK = "Syncing clock"
+    INGESTING = "Ingesting"
+    COPYING = "Copying"
+    TRANSCRIBING = "Transcribing"
+    DIARIZING = "Diarizing"
+    SUMMARIZING = "Summarizing"
+    IDLE = "Idle"
+    WATCHING = "Watching"
+    SETTLING = "Settling"
+    STARTING = "Starting"
+    PREPARING = "Preparing"
+    ERROR = "Error"
+    COMPLETE = "Complete"
+    PROCESSING = "Processing"
+
+
+class StepId:
+    """Pipeline step identifiers for ``StatusReporter`` step tracking."""
+
+    COPY = "copy"
+    MERGE = "merge"
+    TRANSCRIBE = "transcribe"
+    DIARIZE = "diarize"
+    SUMMARIZE = "summarize"
+
+
+class StepLabel:
+    """Human-readable labels shown in the menu bar when a step is active."""
+
+    COPY = "Copy to archive"
+    MERGE = "Merge chunks"
+    TRANSCRIBE = "Transcribe"
+    DIARIZE = "Diarize speakers"
+    SUMMARIZE = "Meeting notes"
+
+
 def default_status_path() -> Path:
     return Path.home() / "Library" / "Application Support" / "IdeaForge" / "status.json"
 
@@ -151,7 +190,7 @@ def menu_bar_title(status: PipelineStatus) -> str:
     if status.state == STATE_ERROR:
         return "⚠ IdeaForge"
 
-    stage = status.stage or "Processing"
+    stage = status.stage or Stage.PROCESSING
     if status.active_sessions > 1:
         return f"⟳ {stage} · {status.active_sessions} active"
     if status.sessions_total > 1 and status.session:
@@ -216,7 +255,7 @@ class StatusReporter:
         self._status = PipelineStatus(
             state=STATE_IDLE,
             device=device,
-            stage="Idle",
+            stage=Stage.IDLE,
             detail=detail or "Waiting for recordings",
             steps=[],
         )
@@ -226,7 +265,7 @@ class StatusReporter:
     def set_watching(self, *, device: Optional[str] = None) -> None:
         self._status.state = STATE_WATCHING
         self._status.device = device
-        self._status.stage = "Watching"
+        self._status.stage = Stage.WATCHING
         self._status.detail = "Monitoring /Volumes for recorder"
         self._status.progress = None
         self._status.error = None
@@ -235,7 +274,7 @@ class StatusReporter:
     def set_settling(self, *, device: str, recording_count: int) -> None:
         self._status.state = STATE_SETTLING
         self._status.device = device
-        self._status.stage = "Settling"
+        self._status.stage = Stage.SETTLING
         self._status.detail = f"{recording_count} recording(s) detected — waiting for mount"
         self._status.progress = None
         self._write()
@@ -253,7 +292,7 @@ class StatusReporter:
             device=device,
             sessions_total=sessions_total,
             pipeline=pipeline,
-            stage="Starting",
+            stage=Stage.STARTING,
             detail=f"{sessions_total} session(s) queued",
             started_at=_utc_now(),
             steps=[],
@@ -272,7 +311,7 @@ class StatusReporter:
         self._status.state = STATE_PROCESSING
         self._status.session = session_index
         self._status.recording = label
-        self._status.stage = "Preparing"
+        self._status.stage = Stage.PREPARING
         self._status.progress = None
         self._status.detail = recording_stem
         self._status.error = None
@@ -325,7 +364,7 @@ class StatusReporter:
 
     def set_error(self, message: str) -> None:
         self._status.state = STATE_ERROR
-        self._status.stage = "Error"
+        self._status.stage = Stage.ERROR
         self._status.detail = message
         self._status.error = message
         self._status.progress = None
@@ -339,7 +378,7 @@ class StatusReporter:
         else:
             detail = f"{processed} session(s) processed"
         self._status.state = STATE_COMPLETE
-        self._status.stage = "Complete"
+        self._status.stage = Stage.COMPLETE
         self._status.detail = detail
         self._status.progress = 1.0
         for step in self._status.steps:
@@ -360,14 +399,14 @@ def build_step_plan(stages) -> List[tuple[str, str]]:
     """Build ordered pipeline steps from resolved stage flags."""
     plan: List[tuple[str, str]] = []
     if stages.copy:
-        plan.append(("copy", "Copy to archive"))
+        plan.append((StepId.COPY, StepLabel.COPY))
     if stages.transcribe:
-        plan.append(("merge", "Merge chunks"))
-        plan.append(("transcribe", "Transcribe"))
+        plan.append((StepId.MERGE, StepLabel.MERGE))
+        plan.append((StepId.TRANSCRIBE, StepLabel.TRANSCRIBE))
         if stages.diarize:
-            plan.append(("diarize", "Diarize speakers"))
+            plan.append((StepId.DIARIZE, StepLabel.DIARIZE))
     elif stages.diarize:
-        plan.append(("diarize", "Diarize speakers"))
+        plan.append((StepId.DIARIZE, StepLabel.DIARIZE))
     if stages.llm:
-        plan.append(("summarize", "Meeting notes"))
+        plan.append((StepId.SUMMARIZE, StepLabel.SUMMARIZE))
     return plan

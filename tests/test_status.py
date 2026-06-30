@@ -6,7 +6,10 @@ from ideaforge.status import (
     STATE_PROCESSING,
     STEP_ACTIVE,
     STEP_DONE,
+    Stage,
     StatusReporter,
+    StepId,
+    StepLabel,
     build_step_plan,
     load_status,
     menu_bar_title,
@@ -17,11 +20,11 @@ def test_build_step_plan_includes_pipeline_stages():
     stages = PipelineStages(copy=True, transcribe=True, diarize=True, llm=True)
     plan = build_step_plan(stages)
     assert [step_id for step_id, _ in plan] == [
-        "copy",
-        "merge",
-        "transcribe",
-        "diarize",
-        "summarize",
+        StepId.COPY,
+        StepId.MERGE,
+        StepId.TRANSCRIBE,
+        StepId.DIARIZE,
+        StepId.SUMMARIZE,
     ]
 
 
@@ -33,11 +36,11 @@ def test_status_reporter_writes_progress(tmp_path):
         1,
         label="R2026-06-30-08-44-46.WAV",
         recording_stem="R2026-06-30-08-44-46",
-        step_plan=[("copy", "Copy to archive"), ("transcribe", "Transcribe")],
+        step_plan=[(StepId.COPY, StepLabel.COPY), (StepId.TRANSCRIBE, StepLabel.TRANSCRIBE)],
     )
-    reporter.set_step_active("copy", detail="1/3 files copied")
-    reporter.touch(stage="Copying", progress=0.5, detail="2/3 files copied")
-    reporter.mark_step_done("copy")
+    reporter.set_step_active(StepId.COPY, detail="1/3 files copied")
+    reporter.touch(stage=Stage.COPYING, progress=0.5, detail="2/3 files copied")
+    reporter.mark_step_done(StepId.COPY)
     reporter.complete_run(processed=1)
 
     loaded = load_status(path)
@@ -56,9 +59,9 @@ def test_menu_bar_title_for_active_session():
         1,
         label="session",
         recording_stem="R2026-06-30-08-44-46",
-        step_plan=[("diarize", "Diarize speakers")],
+        step_plan=[(StepId.DIARIZE, StepLabel.DIARIZE)],
     )
-    reporter.set_step_active("diarize")
+    reporter.set_step_active(StepId.DIARIZE)
     title = menu_bar_title(reporter._status)
     assert title == "⟳ Diarize speakers 1/2"
 
@@ -68,7 +71,16 @@ def test_status_reporter_context_activation(tmp_path):
     reporter = StatusReporter(path)
     with reporter.activate():
         reporter.begin_run(device="NO NAME", sessions_total=1, pipeline="llm")
-        reporter.touch(stage="Summarizing", detail="grok")
+        reporter.touch(stage=Stage.SUMMARIZING, detail="grok")
     loaded = load_status(path)
     assert loaded.state == STATE_PROCESSING
-    assert loaded.stage == "Summarizing"
+    assert loaded.stage == Stage.SUMMARIZING
+
+
+def test_stage_constants_are_unique():
+    stage_values = [value for key, value in vars(Stage).items() if not key.startswith("_")]
+    step_id_values = [value for key, value in vars(StepId).items() if not key.startswith("_")]
+    step_label_values = [value for key, value in vars(StepLabel).items() if not key.startswith("_")]
+    assert len(stage_values) == len(set(stage_values))
+    assert len(step_id_values) == len(set(step_id_values))
+    assert len(step_label_values) == len(set(step_label_values))

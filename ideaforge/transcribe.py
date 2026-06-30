@@ -12,7 +12,7 @@ from ideaforge.backends import resolve_whisper_backend, transcribe_with_backend
 from ideaforge.gpu_lock import gpu_stage
 from ideaforge.diarize import assign_speakers, diarize_audio, load_cached_turns, save_turns_cache
 from ideaforge.speakers import format_diarized_transcript, rename_segments
-from ideaforge.status import active_reporter, status_touch
+from ideaforge.status import Stage, StepId, active_reporter, status_touch
 from ideaforge.transcription_types import TranscriptSegment, TranscriptionResult
 
 
@@ -82,7 +82,7 @@ def transcribe_audio(
     except OSError:
         duration_seconds = None
     status_touch(
-        stage="Transcribing",
+        stage=Stage.TRANSCRIBING,
         clear_progress=True,
         detail=duration_hint or audio_path.name,
     )
@@ -98,7 +98,7 @@ def transcribe_audio(
             beam_size=beam_size,
             language=language,
             on_progress=lambda progress, detail: status_touch(
-                stage="Transcribing",
+                stage=Stage.TRANSCRIBING,
                 progress=progress,
                 detail=detail,
             ),
@@ -109,7 +109,7 @@ def transcribe_audio(
         if diarize:
             reporter = active_reporter()
             if reporter is not None:
-                reporter.mark_step_done("transcribe")
+                reporter.mark_step_done(StepId.TRANSCRIBE)
             result.segments = _apply_diarization(
                 audio_path,
                 result.segments,
@@ -241,7 +241,7 @@ def _apply_diarization(
 
     def _label_progress(index: int, total: int) -> None:
         status_touch(
-            stage="Diarizing",
+            stage=Stage.DIARIZING,
             progress=index / total if total else None,
             detail=f"Labeling segment {index}/{total}",
         )
@@ -256,5 +256,5 @@ def _apply_diarization(
     print(f"    ✓ Speaker labels assigned ({len(labeled)} segments)")
     reporter = active_reporter()
     if reporter is not None:
-        reporter.mark_step_done("diarize")
+        reporter.mark_step_done(StepId.DIARIZE)
     return labeled
