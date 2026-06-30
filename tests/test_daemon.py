@@ -9,6 +9,7 @@ from ideaforge.config import IdeaForgeConfig
 from ideaforge.daemon import DeviceSnapshot, RecorderWatcher, snapshot_device
 from ideaforge.notify import ProcessResult
 from ideaforge.device import RecorderDevice
+from ideaforge.device_profiles import Z28Profile
 from ideaforge.pipeline import PipelineStages
 
 
@@ -16,6 +17,7 @@ def _device(tmp_path: Path, *, count: int = 1, mtime: float = 1000.0) -> Recorde
     tmp_path.mkdir(parents=True, exist_ok=True)
     record = tmp_path / "RECORD"
     record.mkdir()
+    profile = Z28Profile()
     for i in range(count):
         wav = record / f"R2026-06-27-07-43-{10 + i:02d}.WAV"
         wav.write_bytes(b"\x00" * 1000)
@@ -25,6 +27,8 @@ def _device(tmp_path: Path, *, count: int = 1, mtime: float = 1000.0) -> Recorde
         record_folder=record,
         settings_file=None,
         recording_count=count,
+        profile_name="z28",
+        profile=profile,
     )
 
 
@@ -55,7 +59,7 @@ def test_tick_runs_pipeline_on_new_device(tmp_path: Path, monkeypatch):
 
     monkeypatch.setattr(
         "ideaforge.daemon.find_recorder_mounts",
-        lambda volumes_root=Path("/Volumes"): [device],
+        lambda *args, **kwargs: [device],
     )
 
     result = watcher.tick()
@@ -70,7 +74,7 @@ def test_tick_skips_when_snapshot_unchanged(tmp_path: Path, monkeypatch, capsys)
 
     monkeypatch.setattr(
         "ideaforge.daemon.find_recorder_mounts",
-        lambda volumes_root=Path("/Volumes"): [device],
+        lambda *args, **kwargs: [device],
     )
 
     watcher.tick()
@@ -88,7 +92,7 @@ def test_tick_runs_when_new_recording_added(tmp_path: Path, monkeypatch):
 
     monkeypatch.setattr(
         "ideaforge.daemon.find_recorder_mounts",
-        lambda volumes_root=Path("/Volumes"): [device],
+        lambda *args, **kwargs: [device],
     )
     watcher.tick()
     process_fn.reset_mock()
@@ -99,10 +103,12 @@ def test_tick_runs_when_new_recording_added(tmp_path: Path, monkeypatch):
         record_folder=device.record_folder,
         settings_file=None,
         recording_count=2,
+        profile_name="z28",
+        profile=device.profile,
     )
     monkeypatch.setattr(
         "ideaforge.daemon.find_recorder_mounts",
-        lambda volumes_root=Path("/Volumes"): [updated],
+        lambda *args, **kwargs: [updated],
     )
 
     result = watcher.tick()
@@ -118,7 +124,7 @@ def test_tick_skips_multiple_devices(tmp_path: Path, monkeypatch):
 
     monkeypatch.setattr(
         "ideaforge.daemon.find_recorder_mounts",
-        lambda volumes_root=Path("/Volumes"): [device_a, device_b],
+        lambda *args, **kwargs: [device_a, device_b],
     )
 
     assert watcher.tick() is None

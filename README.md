@@ -327,14 +327,37 @@ max_parallel_sessions = 2   # default in example config; use 1 for fully sequent
 
 Start with `1` on memory-constrained machines; `2` is a good balance on Apple Silicon with Grok for summarization.
 
+## Multi-recorder devices (0.8.0)
+
+Map volume labels to **device profiles** in config. Built-in profiles: `z28` (RECORD/R*.WAV + `recset.txt`) and `generic_wav` (recursive audio on mass-storage volumes).
+
+```toml
+[[devices]]
+name = "office-z28"
+mount_glob = "NO NAME"
+profile = "z28"
+
+[[devices]]
+name = "field-recorder"
+mount_glob = "RECORDER"
+profile = "generic_wav"
+```
+
+- **Without `[[devices]]`** — legacy behavior: auto-detect Z28/Z29 volumes; single recorder at a time.
+- **With `[[devices]]`** — each named device archives under `~/IdeaForge/{name}/YYYY-MM-DD/`; daemon can process multiple configured mounts (one per poll cycle).
+- **`ideaforge --detect`** — shows profile and config name for each matched volume.
+
 ## Archive layout
 
-Everything lands under the archive root from config (default `~/IdeaForge`). There is no separate `sessions/` or `notes/` tree — each **session** is a recorder filename stem (e.g. `R2026-06-27-07-43-11`), and all artifacts for that session live in the same **date folder**.
+Everything lands under the archive root from config (default `~/IdeaForge`). With `[[devices]]` configured, each device gets a subdirectory (`~/IdeaForge/office-z28/`, etc.). There is no separate `sessions/` or `notes/` tree — each **session** is a recorder filename stem (e.g. `R2026-06-27-07-43-11`), and all artifacts for that session live in the same **date folder**.
 
 ```
 ~/IdeaForge/
-├── .processed_log.json          # SHA-256 dedup, per-file map, failure queue for --retry-failed
-└── YYYY-MM-DD/                  # dated folder (file mtime at ingest; matches filename when clock is correct)
+├── .processed_log.json          # legacy single-device dedup log (at archive root)
+├── office-z28/                  # when [[devices]] is configured
+│   ├── .processed_log.json
+│   └── YYYY-MM-DD/
+└── YYYY-MM-DD/                  # default layout without [[devices]]
     ├── R2026-06-27-07-43-11.WAV           # source chunk copied from device
     ├── R2026-06-27-07-58-22.WAV           # second chunk (same session if gap ≤ chunk_gap_seconds)
     ├── R2026-06-27-07-43-11_merged.WAV    # merged audio when multiple chunks are grouped

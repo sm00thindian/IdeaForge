@@ -17,6 +17,7 @@ from ideaforge.device import (
     sync_device_clock,
     unmount_volume,
 )
+from ideaforge.device_registry import allows_multiple_mounts, archive_device_root
 from ideaforge.ingest import (
     IngestResult,
     get_audio_files,
@@ -39,19 +40,16 @@ class DeviceSnapshot:
 
     @classmethod
     def from_device(cls, device: RecorderDevice) -> "DeviceSnapshot":
-        newest = 0.0
-        folder = device.record_folder
-        if folder.is_dir():
-            for pattern in ("R*.WAV", "R*.wav"):
-                for wav in folder.glob(pattern):
-                    try:
-                        newest = max(newest, wav.stat().st_mtime)
-                    except OSError:
-                        pass
+        if device.profile is not None:
+            return cls(
+                mount_path=str(device.mount_path),
+                recording_count=device.profile.recording_count(device.mount_path),
+                newest_mtime=device.profile.newest_recording_mtime(device.mount_path),
+            )
         return cls(
             mount_path=str(device.mount_path),
             recording_count=device.recording_count,
-            newest_mtime=newest,
+            newest_mtime=0.0,
         )
 
 
@@ -67,8 +65,10 @@ def maybe_unmount_device(
     """Unmount recorder volume when ingest succeeded and RECORD/ is empty."""
     if not cfg.daemon_unmount_after_ingest or not ingest.device_cleared:
         return False
-    extensions = set(cfg.audio_extensions)
-    remaining = get_audio_files(source, extensions, cfg.min_file_size_bytes)
+    from ideaforge.ingest import list_device_recordings
+
+    device = device_from_mount(source, cfg)
+    remaining = list_device_recordings(source, cfg, device)
     if remaining:
         return False
     label = source.name
@@ -88,8 +88,8 @@ def _maybe_sync_device_clock(
     if not cfg.daemon_sync_device_clock:
         return
 
-    device = device_from_mount(source)
-    if device is None:
+    device = device_from_mount(source, cfg)
+    if device is None or device.settings_file is None:
         return
 
     if reporter is not None:
@@ -124,12 +124,14 @@ def run_device_ingest(
         if delete_after_copy is None
         else delete_after_copy
     )
+    device = device_from_mount(source, cfg)
     ingest = ingest_device_recordings(
         source,
         archive,
         cfg,
         delete_after_copy=delete,
         reporter=reporter,
+        device=device,
     )
 
     if ingest.files_failed:
@@ -209,7 +211,7 @@ class RecorderWatcher:
 
     def tick(self) -> Optional[ProcessResult]:
         """Single poll cycle. Returns pipeline result, or None if idle."""
-        devices = find_recorder_mounts()
+        devices = find_recorder_mounts(cfg=self.cfg)
         current = {str(device.mount_path): device for device in devices}
         current_mounts = set(current.keys())
 
@@ -223,13 +225,24 @@ class RecorderWatcher:
             self._status.set_watching()
             return None
 
-        if len(current) > 1:
+        if len(current) > 1 and not allows_multiple_mounts(self.cfg):
             names = ", ".join(Path(m).name for m in sorted(current))
             print(f"⚠️  Multiple recorders detected ({names}) — unplug extras")
             self._status.set_idle(detail="Multiple recorders detected — unplug extras")
             return None
 
-        device = next(iter(current.values()))
+        device = self._select_device(devices)
+        if device is None:
+            if len(devices) == 1:
+                idle = devices[0]
+                mount_key = str(idle.mount_path)
+                if mount_key in self._settled:
+                    print(f"   No new recordings on {idle.label} — skipping")
+                    self._status.set_watching(device=idle.label)
+                    return None
+            self._status.set_watching()
+            return None
+
         mount_key = str(device.mount_path)
 
         if mount_key not in self._settled:
@@ -244,9 +257,14 @@ class RecorderWatcher:
             if self.settle_seconds > 0:
                 print(f"   Waiting {self.settle_seconds:.0f}s for mount to settle...")
                 self.sleep_fn(self.settle_seconds)
-            refreshed = find_recorder_mounts()
-            if len(refreshed) == 1:
-                device = refreshed[0]
+            refreshed = find_recorder_mounts(cfg=self.cfg)
+            refreshed_device = current.get(mount_key)
+            for candidate in refreshed:
+                if str(candidate.mount_path) == mount_key:
+                    refreshed_device = candidate
+                    break
+            if refreshed_device is not None:
+                device = refreshed_device
                 mount_key = str(device.mount_path)
             self._settled.add(mount_key)
 
@@ -256,7 +274,7 @@ class RecorderWatcher:
             self._status.set_watching(device=device.label)
             return None
 
-        archive = self.cfg.archive.expanduser().resolve()
+        archive = archive_device_root(self.cfg, device.device_name)
         pipeline_result = self.process_fn(
             device.mount_path,
             archive,
@@ -270,12 +288,32 @@ class RecorderWatcher:
             pipeline_result.files_processed > 0 or pipeline_result.files_skipped > 0
         ):
             notify_process_complete(pipeline_result, device_label=device.label)
-        refreshed = find_recorder_mounts()
-        if len(refreshed) == 1:
-            self._last_snapshot[mount_key] = snapshot_device(refreshed[0])
+        refreshed = find_recorder_mounts(cfg=self.cfg)
+        refreshed_device = None
+        for candidate in refreshed:
+            if str(candidate.mount_path) == mount_key:
+                refreshed_device = candidate
+                break
+        if refreshed_device is not None:
+            self._last_snapshot[mount_key] = snapshot_device(refreshed_device)
         else:
             self._last_snapshot[mount_key] = snap
         return pipeline_result
+
+    def _select_device(self, devices: list[RecorderDevice]) -> Optional[RecorderDevice]:
+        """Pick the first device that needs processing this tick."""
+        if not devices:
+            return None
+        if self.force:
+            return devices[0]
+        for device in devices:
+            mount_key = str(device.mount_path)
+            snap = snapshot_device(device)
+            if mount_key not in self._settled:
+                return device
+            if self._last_snapshot.get(mount_key) != snap:
+                return device
+        return None
 
     def run(self) -> int:
         from ideaforge import __version__

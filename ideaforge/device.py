@@ -7,7 +7,11 @@ import subprocess
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
+
+if TYPE_CHECKING:
+    from ideaforge.config import IdeaForgeConfig
+    from ideaforge.device_profiles import DeviceProfile
 
 # Z28/Z29 recorders store WAV files as RYYYY-MM-DD-HH-MM-SS.WAV in RECORD/
 RECORDING_PATTERN = re.compile(r"^R\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.WAV$", re.IGNORECASE)
@@ -25,9 +29,14 @@ class RecorderDevice:
     record_folder: Path
     settings_file: Optional[Path]
     recording_count: int
+    device_name: Optional[str] = None
+    profile_name: str = "z28"
+    profile: Optional["DeviceProfile"] = None
 
     @property
     def label(self) -> str:
+        if self.device_name:
+            return f"{self.device_name} ({self.mount_path.name})"
         return self.mount_path.name
 
 
@@ -47,36 +56,22 @@ def is_recorder_volume(volume: Path) -> bool:
     return False
 
 
-def find_recorder_mounts(volumes_root: Path = Path("/Volumes")) -> List[RecorderDevice]:
+def find_recorder_mounts(
+    volumes_root: Path = Path("/Volumes"),
+    cfg: Optional["IdeaForgeConfig"] = None,
+) -> List[RecorderDevice]:
     """Scan macOS /Volumes for attached USB recorders."""
-    devices: List[RecorderDevice] = []
-    if not volumes_root.is_dir():
-        return devices
+    from ideaforge.device_registry import find_recorder_mounts as _find
 
-    for volume in sorted(volumes_root.iterdir()):
-        if volume.name.startswith(".") or volume.is_symlink():
-            continue
-        if not is_recorder_volume(volume):
-            continue
-
-        record_folder = _find_record_folder(volume)
-        settings = _find_settings_file(volume)
-        count = len(list(record_folder.glob("R*.WAV")) + list(record_folder.glob("R*.wav"))) if record_folder else 0
-
-        devices.append(
-            RecorderDevice(
-                mount_path=volume,
-                record_folder=record_folder or volume,
-                settings_file=settings,
-                recording_count=count,
-            )
-        )
-    return devices
+    return _find(volumes_root, cfg)
 
 
-def auto_detect_source(volumes_root: Path = Path("/Volumes")) -> Optional[Path]:
+def auto_detect_source(
+    volumes_root: Path = Path("/Volumes"),
+    cfg: Optional["IdeaForgeConfig"] = None,
+) -> Optional[Path]:
     """Return mount path of the sole detected recorder, or None."""
-    devices = find_recorder_mounts(volumes_root)
+    devices = find_recorder_mounts(volumes_root, cfg)
     if len(devices) == 1:
         return devices[0].mount_path
     return None
@@ -162,23 +157,15 @@ def parse_recset_time(settings_path: Path) -> Optional[datetime]:
     return None
 
 
-def device_from_mount(mount: Path) -> Optional[RecorderDevice]:
+def device_from_mount(
+    mount: Path,
+    cfg: Optional["IdeaForgeConfig"] = None,
+) -> Optional[RecorderDevice]:
     """Build a RecorderDevice from a mount path, or None if not a recorder."""
-    if not is_recorder_volume(mount):
-        return None
-    record_folder = _find_record_folder(mount)
-    settings = _find_settings_file(mount)
-    count = 0
-    if record_folder:
-        count = len(
-            list(record_folder.glob("R*.WAV")) + list(record_folder.glob("R*.wav"))
-        )
-    return RecorderDevice(
-        mount_path=mount,
-        record_folder=record_folder or mount,
-        settings_file=settings,
-        recording_count=count,
-    )
+    from ideaforge.config import IdeaForgeConfig
+    from ideaforge.device_registry import discover_mount
+
+    return discover_mount(mount.expanduser().resolve(), cfg or IdeaForgeConfig())
 
 
 def format_recset_time_line(dt: datetime) -> str:
@@ -385,8 +372,11 @@ def describe_device(device: RecorderDevice) -> str:
     lines = [
         f"  Mount:      {device.mount_path}",
         f"  Label:      {device.label}",
+        f"  Profile:    {device.profile_name}",
         f"  Recordings: {device.recording_count} in {device.record_folder.name}/",
     ]
+    if device.device_name:
+        lines.append(f"  Config:     {device.device_name}")
     if device.settings_file:
         lines.append(f"  Settings:   {device.settings_file.name}")
     return "\n".join(lines)

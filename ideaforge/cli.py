@@ -305,11 +305,11 @@ def resolve_config(args: argparse.Namespace) -> IdeaForgeConfig:
     return cfg
 
 
-def resolve_source(args: argparse.Namespace) -> Optional[Path]:
+def resolve_source(args: argparse.Namespace, cfg: IdeaForgeConfig) -> Optional[Path]:
     if args.source:
         return args.source.expanduser().resolve()
     if args.auto_source:
-        detected = auto_detect_source()
+        detected = auto_detect_source(cfg=cfg)
         if detected:
             print(f"🔍 Auto-detected recorder: {detected}")
             return detected
@@ -352,7 +352,7 @@ def main(argv: Optional[list] = None) -> int:
         return 0
 
     if args.detect:
-        devices = find_recorder_mounts()
+        devices = find_recorder_mounts(cfg=cfg)
         if not devices:
             print("No USB recorders detected under /Volumes")
             return 1
@@ -398,7 +398,7 @@ def main(argv: Optional[list] = None) -> int:
     archive = cfg.archive.expanduser().resolve()
 
     if args.ingest_only:
-        source = resolve_source(args)
+        source = resolve_source(args, cfg)
         if source is None:
             parser.error("--ingest-only requires --source or --auto-source")
         if not source.exists() or not source.is_dir():
@@ -451,7 +451,7 @@ def main(argv: Optional[list] = None) -> int:
         return 0
 
     stages = resolve_stages(args, cfg)
-    source = resolve_source(args)
+    source = resolve_source(args, cfg)
     if source is None:
         parser.error("One of --source, --auto-source, or --daemon is required (unless using --detect)")
 

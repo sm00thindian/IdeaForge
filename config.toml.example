@@ -3,6 +3,19 @@
 
 archive = "~/IdeaForge"
 
+# Optional: map volume labels to device profiles (0.8.0+).
+# When set, archive paths become ~/IdeaForge/{name}/YYYY-MM-DD/
+# and the daemon can process multiple configured devices at once.
+# [[devices]]
+# name = "office-z28"
+# mount_glob = "NO NAME"
+# profile = "z28"
+#
+# [[devices]]
+# name = "field-recorder"
+# mount_glob = "RECORDER"
+# profile = "generic_wav"
+
 [llm]
 backend = "auto"         # auto | ollama | grok | claude  (auto prefers Grok)
 ollama_model = "llama3.1"

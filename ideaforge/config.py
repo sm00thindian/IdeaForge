@@ -77,8 +77,18 @@ def has_anthropic_api_key() -> bool:
 
 
 @dataclass
+class DeviceBinding:
+    """Maps a volume label glob to a device profile (``[[devices]]`` in config)."""
+
+    name: str
+    mount_glob: str
+    profile: str = "z28"
+
+
+@dataclass
 class IdeaForgeConfig:
     archive: Path = field(default_factory=lambda: Path.home() / "IdeaForge")
+    devices: List[DeviceBinding] = field(default_factory=list)
     llm_backend: str = "auto"  # auto | ollama | grok | claude
     ollama_model: str = "llama3.1"
     grok_model: str = "grok-4.3"
@@ -130,6 +140,16 @@ class IdeaForgeConfig:
     def _merge(cls, cfg: "IdeaForgeConfig", data: Dict[str, Any]) -> "IdeaForgeConfig":
         if "archive" in data:
             cfg.archive = Path(data["archive"]).expanduser()
+        if "devices" in data:
+            cfg.devices = [
+                DeviceBinding(
+                    name=str(entry["name"]),
+                    mount_glob=str(entry["mount_glob"]),
+                    profile=str(entry.get("profile", "z28")),
+                )
+                for entry in data["devices"]
+                if isinstance(entry, dict) and "name" in entry and "mount_glob" in entry
+            ]
         if "llm" in data:
             llm = data["llm"]
             cfg.llm_backend = llm.get("backend", cfg.llm_backend)

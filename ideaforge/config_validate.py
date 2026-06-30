@@ -14,6 +14,7 @@ from ideaforge.config import IdeaForgeConfig
 
 TOP_LEVEL_KEYS: Set[str] = {
     "archive",
+    "devices",
     "llm",
     "whisper",
     "processing",
@@ -64,6 +65,8 @@ SECTION_KEYS: Dict[str, Set[str]] = {
         "obsidian_note",
     },
 }
+
+DEVICE_PROFILES = {"z28", "generic_wav"}
 
 LLM_BACKENDS = {"auto", "ollama", "grok", "claude"}
 WHISPER_BACKENDS = {"auto", "mlx", "faster"}
@@ -129,6 +132,22 @@ def validate_config_values(cfg: IdeaForgeConfig) -> List[str]:
         issues.append("processing.chunk_gap_seconds must be >= 0")
     if cfg.merge_min_chunk_seconds < 0:
         issues.append("processing.merge_min_chunk_seconds must be >= 0")
+
+    device_names: Set[str] = set()
+    for device in cfg.devices:
+        if not device.name.strip():
+            issues.append("devices[].name must not be empty")
+        elif device.name in device_names:
+            issues.append(f"duplicate devices[].name '{device.name}'")
+        else:
+            device_names.add(device.name)
+        if not device.mount_glob.strip():
+            issues.append(f"devices[{device.name!r}].mount_glob must not be empty")
+        if device.profile not in DEVICE_PROFILES:
+            issues.append(
+                f"devices[{device.name!r}].profile '{device.profile}' "
+                f"(expected one of {sorted(DEVICE_PROFILES)})"
+            )
 
     return issues
 

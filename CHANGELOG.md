@@ -2,6 +2,15 @@
 
 All notable changes to IdeaForge are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.8.0] - 2026-06-30
+
+### Added
+
+- **Device profiles** — `DeviceProfile` protocol with built-in `z28` and `generic_wav` adapters (`device_profiles.py`).
+- **`[[devices]]` config** — Map volume `mount_glob` to profile and logical `name`; validated by `--validate-config`.
+- **Per-device archive paths** — `~/IdeaForge/{device_name}/YYYY-MM-DD/` when devices are configured.
+- **Multi-volume daemon** — Processes multiple configured recorders (one device per poll cycle); legacy single-Z28 mode unchanged without `[[devices]]`.
+
 ## [0.7.1] - 2026-06-30
 
 ### Added

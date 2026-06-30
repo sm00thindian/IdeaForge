@@ -111,10 +111,10 @@ mount_glob = "RECORDER"
 profile = "generic_wav"
 ```
 
-- [ ] **`DeviceProfile` protocol** — `discover_files()`, `parse_session_id()`, `read_device_clock()`, `stable_file_predicate()`.
-- [ ] **Built-in profiles** — `z28` (current `RECORD/R*.WAV` + `recset.txt`), `generic_wav` (recursive `.wav` by mtime).
-- [ ] **Per-device archive subdir** — `~/IdeaForge/{device_name}/sessions/...` to avoid collisions.
-- [ ] **Daemon: multi-volume** — Already watches `/Volumes/*`; map volume → profile via config.
+- [x] **`DeviceProfile` protocol** — `discover_files()`, `parse_session_id()`, `read_device_clock()`, `is_stable_source_file()` (0.8.0).
+- [x] **Built-in profiles** — `z28`, `generic_wav` (0.8.0).
+- [x] **Per-device archive subdir** — `~/IdeaForge/{device_name}/YYYY-MM-DD/` (0.8.0).
+- [x] **Daemon: multi-volume** — Map volume → profile via `[[devices]]`; process configured mounts (0.8.0).
 
 ### Phase B — Heterogeneous formats (0.9.0)
 

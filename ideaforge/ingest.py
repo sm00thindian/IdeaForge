@@ -23,6 +23,7 @@ from ideaforge.state_db import (
 
 if TYPE_CHECKING:
     from ideaforge.config import IdeaForgeConfig
+    from ideaforge.device import RecorderDevice
 
 
 def compute_file_hash(file_path: Path, block_size: int = 65536) -> str:
@@ -151,6 +152,17 @@ class IngestResult:
         return self.files_failed == 0
 
 
+def list_device_recordings(
+    source: Path,
+    cfg: "IdeaForgeConfig",
+    device: Optional["RecorderDevice"] = None,
+) -> List[Path]:
+    extensions: Set[str] = set(cfg.audio_extensions)
+    if device is not None and device.profile is not None:
+        return device.profile.discover_files(source, extensions, cfg.min_file_size_bytes)
+    return get_audio_files(source, extensions, cfg.min_file_size_bytes)
+
+
 def ingest_device_recordings(
     source: Path,
     archive: Path,
@@ -158,6 +170,7 @@ def ingest_device_recordings(
     *,
     delete_after_copy: bool = True,
     reporter: Optional[Any] = None,
+    device: Optional["RecorderDevice"] = None,
 ) -> IngestResult:
     """
     Copy all recordings from a device mount to the archive, verify hashes,
@@ -168,8 +181,7 @@ def ingest_device_recordings(
     from ideaforge.device import is_path_on_recorder
     from ideaforge.status import Stage
 
-    extensions: Set[str] = set(cfg.audio_extensions)
-    device_files = get_audio_files(source, extensions, cfg.min_file_size_bytes)
+    device_files = list_device_recordings(source, cfg, device)
     result = IngestResult()
     if not device_files:
         return result

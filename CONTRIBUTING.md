@@ -36,6 +36,8 @@ export HF_TOKEN="hf_..."
 | `ideaforge/session_worker.py` | Per-session pipeline worker |
 | `ideaforge/session_pool.py` | Parallel session pool |
 | `ideaforge/state_db.py` | Versioned `.processed_log.json` |
+| `ideaforge/device_profiles.py` | Z28 / generic_wav device adapters |
+| `ideaforge/device_registry.py` | `[[devices]]` binding and archive roots |
 | `ideaforge/pipeline.py` | Stage flags (`--llm-only`, etc.) |
 | `ideaforge/ingest.py` | File discovery, dedup, archive copy, purge |
 | `ideaforge/chunks.py` | Recorder chunk detection and merge rules |

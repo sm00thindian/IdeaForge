@@ -28,7 +28,7 @@ def test_run_device_ingest_unmounts_when_configured(tmp_path: Path):
 
     with (
         patch("ideaforge.daemon.ingest_device_recordings", return_value=ingest),
-        patch("ideaforge.daemon.get_audio_files", return_value=[]),
+        patch("ideaforge.ingest.list_device_recordings", return_value=[]),
         patch("ideaforge.daemon.unmount_volume", return_value=True) as unmount,
     ):
         result = run_device_ingest(mount, archive, cfg)
