@@ -105,6 +105,16 @@ class IdeaForgeConfig:
     min_speakers: Optional[int] = None
     max_speakers: Optional[int] = None
     speaker_map: Dict[str, str] = field(default_factory=dict)
+    speaker_library_enabled: bool = True
+    speaker_library_auto_apply: bool = True
+    speaker_library_auto_learn: bool = True
+    speaker_library_match_threshold: float = 0.75
+    speaker_library_path: Optional[Path] = None
+    sync_enabled: bool = False
+    sync_target: str = ""
+    sync_after_notes: bool = True
+    sync_scope: str = "session"
+    sync_extra_args: List[str] = field(default_factory=lambda: ["-az"])
     daemon_poll_interval: float = 5.0
     daemon_settle_seconds: float = 5.0
     daemon_delete_after_copy: bool = True
@@ -203,6 +213,24 @@ class IdeaForgeConfig:
                 cfg.speaker_map = {str(k): str(v) for k, v in speakers["map"].items()}
             elif "names" in speakers:
                 cfg.speaker_map = {str(k): str(v) for k, v in speakers["names"].items()}
+            if "library_enabled" in speakers:
+                cfg.speaker_library_enabled = bool(speakers["library_enabled"])
+            if "library_auto_apply" in speakers:
+                cfg.speaker_library_auto_apply = bool(speakers["library_auto_apply"])
+            if "library_auto_learn" in speakers:
+                cfg.speaker_library_auto_learn = bool(speakers["library_auto_learn"])
+            if "library_match_threshold" in speakers:
+                cfg.speaker_library_match_threshold = float(speakers["library_match_threshold"])
+            if "library_path" in speakers:
+                cfg.speaker_library_path = Path(speakers["library_path"]).expanduser()
+        if "sync" in data:
+            sync = data["sync"]
+            cfg.sync_enabled = bool(sync.get("enabled", cfg.sync_enabled))
+            cfg.sync_target = str(sync.get("target", cfg.sync_target))
+            cfg.sync_after_notes = bool(sync.get("after_notes", cfg.sync_after_notes))
+            cfg.sync_scope = str(sync.get("scope", cfg.sync_scope))
+            if "extra_args" in sync:
+                cfg.sync_extra_args = [str(arg) for arg in sync["extra_args"]]
         if "audio_extensions" in data:
             cfg.audio_extensions = data["audio_extensions"]
         if "daemon" in data:
@@ -236,6 +264,17 @@ class IdeaForgeConfig:
                 cfg.export_obsidian_vault = Path(export["obsidian_vault"]).expanduser()
             cfg.export_obsidian_note = export.get("obsidian_note", cfg.export_obsidian_note)
         return cfg
+
+    def sync_settings(self) -> "SyncSettings":
+        from ideaforge.remote_sync import SyncSettings
+
+        return SyncSettings(
+            enabled=self.sync_enabled,
+            target=self.sync_target,
+            after_notes=self.sync_after_notes,
+            scope=self.sync_scope,  # type: ignore[arg-type]
+            extra_args=list(self.sync_extra_args),
+        )
 
     def export_settings(self, *, force: bool = False) -> "ExportSettings":
         from ideaforge.export import ExportSettings

@@ -2,6 +2,14 @@
 
 All notable changes to IdeaForge are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.0] - 2026-06-30
+
+### Added
+
+- **Fleet dashboard** — `ideaforge fleet` shows pipeline state, per-device failures, and pending queues; `fleet --serve` hosts a read-only web UI.
+- **Remote archive sync** — `[sync]` config runs rsync after meeting notes are generated (`scope`: session/device/archive).
+- **Speaker library** — Reuses pyannote embeddings across sessions; `ideaforge speakers list`; auto-apply/learn via `[speakers]` settings.
+
 ## [0.9.0] - 2026-06-30
 
 ### Added
@@ -152,6 +160,7 @@ All notable changes to IdeaForge are documented here. Format follows [Keep a Cha
 
 Prior releases were not changelogged in-repo. See git history for daemon, Grok/Claude/Ollama backends, faster-whisper + pyannote diarization, and USB ingest.
 
+[1.0.0]: https://github.com/sm00thindian/IdeaForge/releases/tag/v1.0.0
 [0.9.0]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.9.0
 [0.8.0]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.8.0
 [0.7.1]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.7.1

@@ -28,6 +28,7 @@ ideaforge/reprocess.py
 ideaforge/runner.py
 ideaforge/schema.py
 ideaforge/session_pool.py
+ideaforge/session_time.py
 ideaforge/session_worker.py
 ideaforge/speakers.py
 ideaforge/state_db.py
@@ -46,10 +47,12 @@ ideaforge/assets/icon.svg
 ideaforge/assets/logo.svg
 ideaforge/assets/social-preview.png
 ideaforge/assets/social.svg
+tests/test_audio_normalize.py
 tests/test_audio_util.py
 tests/test_branding.py
 tests/test_chunk_merge_integration.py
 tests/test_chunks.py
+tests/test_chunks_split.py
 tests/test_config.py
 tests/test_config_validate.py
 tests/test_daemon.py
@@ -88,6 +91,7 @@ tests/test_runner_purge.py
 tests/test_save_grok_session.py
 tests/test_schema.py
 tests/test_session_failures.py
+tests/test_session_time.py
 tests/test_speakers.py
 tests/test_state_db.py
 tests/test_status.py

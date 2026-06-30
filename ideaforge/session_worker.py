@@ -340,6 +340,11 @@ def _process_group_body(
             speaker_map=cfg.speaker_map,
             force=force,
             output_stem=session_stem,
+            speaker_library_enabled=cfg.speaker_library_enabled,
+            speaker_library_auto_apply=cfg.speaker_library_auto_apply,
+            speaker_library_auto_learn=cfg.speaker_library_auto_learn,
+            speaker_library_match_threshold=cfg.speaker_library_match_threshold,
+            speaker_library_path=cfg.speaker_library_path,
         )
         if reporter is not None:
             reporter.mark_step_done(StepId.TRANSCRIBE)
@@ -355,6 +360,11 @@ def _process_group_body(
             speaker_map=cfg.speaker_map,
             force=force,
             output_stem=session_stem,
+            speaker_library_enabled=cfg.speaker_library_enabled,
+            speaker_library_auto_apply=cfg.speaker_library_auto_apply,
+            speaker_library_auto_learn=cfg.speaker_library_auto_learn,
+            speaker_library_match_threshold=cfg.speaker_library_match_threshold,
+            speaker_library_path=cfg.speaker_library_path,
         )
         if reporter is not None:
             reporter.mark_step_done(StepId.DIARIZE)
@@ -383,6 +393,17 @@ def _process_group_body(
         )
         if reporter is not None:
             reporter.mark_step_done(StepId.SUMMARIZE)
+
+        from ideaforge.remote_sync import maybe_sync_after_notes
+
+        maybe_sync_after_notes(
+            work_folder=work_folder,
+            archive_root=cfg.archive.expanduser().resolve(),
+            device_root=archive,
+            session_stem=session_stem,
+            settings=cfg.sync_settings(),
+            force=force,
+        )
 
     if stages.copy or stages.transcribe:
         for audio_file, file_hash in file_hashes.items():

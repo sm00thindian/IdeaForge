@@ -54,6 +54,10 @@ min_speakers = 2        # hint for 2-person recordings (optional)
 # [speakers.map]
 # SPEAKER_00 = "Kilynn"
 # SPEAKER_01 = "Alex"
+# library_enabled = true          # reuse embeddings across sessions (1.0.0+)
+# library_auto_apply = true       # apply known names during diarization
+# library_auto_learn = true       # learn names from manual [speakers.map] overrides
+# library_match_threshold = 0.75
 
 [daemon]
 poll_interval_seconds = 5   # how often to check /Volumes
@@ -68,6 +72,14 @@ notify_on_failure = false   # macOS alert when a pipeline session fails (opt-in)
 # Menu bar progress UI (optional):
 #   ./scripts/install-menubar.sh
 # Reads ~/Library/Application Support/IdeaForge/status.json
+
+[sync]
+# Optional remote archive push after meeting notes are generated (1.0.0+)
+enabled = false
+# target = "user@nas:/volume/backups/ideaforge"
+after_notes = true
+scope = "session"    # session | device | archive
+# extra_args = ["-az"]
 
 [export]
 # Off by default — enable what you use (opt-in)

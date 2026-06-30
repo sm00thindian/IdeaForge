@@ -39,6 +39,9 @@ def build_parser() -> argparse.ArgumentParser:
   ideaforge --validate-config
   ideaforge --status
   ideaforge --status --watch
+  ideaforge fleet
+  ideaforge fleet --serve --port 8765
+  ideaforge speakers list
   ideaforge --source /Volumes/Z29 --mode meeting --diarize
 """,
     )
@@ -66,6 +69,33 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="With --sync: update even when within skew threshold",
     )
+
+    fleet_parser = subparsers.add_parser("fleet", help="Fleet dashboard across devices")
+    fleet_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit fleet snapshot as JSON",
+    )
+    fleet_parser.add_argument(
+        "--serve",
+        action="store_true",
+        help="Serve read-only web dashboard (Ctrl+C to stop)",
+    )
+    fleet_parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Bind address for --serve (default: 127.0.0.1)",
+    )
+    fleet_parser.add_argument(
+        "--port",
+        type=int,
+        default=8765,
+        help="Port for --serve (default: 8765)",
+    )
+
+    speakers_parser = subparsers.add_parser("speakers", help="Speaker embedding library")
+    speakers_sub = speakers_parser.add_subparsers(dest="speakers_action", required=True)
+    speakers_sub.add_parser("list", help="List known speakers")
 
     source = parser.add_mutually_exclusive_group()
     source.add_argument("--source", type=Path, help="Mounted recorder or folder path")
@@ -324,6 +354,43 @@ def main(argv: Optional[list] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     cfg = resolve_config(args)
+
+    if args.command == "fleet":
+        from ideaforge.fleet import (
+            collect_fleet_snapshot,
+            format_fleet_report,
+            serve_fleet_dashboard,
+        )
+
+        if args.serve:
+            serve_fleet_dashboard(cfg, host=args.host, port=args.port)
+            return 0
+        if args.json:
+            import json
+
+            print(json.dumps(collect_fleet_snapshot(cfg), indent=2, ensure_ascii=False))
+            return 0
+        print(format_fleet_report(cfg))
+        return 0
+
+    if args.command == "speakers" and args.speakers_action == "list":
+        from ideaforge.speaker_library import list_speakers, load_speaker_library
+
+        library = load_speaker_library(cfg.speaker_library_path)
+        speakers = list_speakers(library)
+        if not speakers:
+            print("Speaker library is empty")
+            return 0
+        print(f"Known speakers ({len(speakers)}):\n")
+        for speaker in speakers:
+            sessions = ", ".join(speaker.sessions[:3])
+            extra = f" (+{len(speaker.sessions) - 3})" if len(speaker.sessions) > 3 else ""
+            print(f"  {speaker.name}")
+            print(f"    id:       {speaker.speaker_id}")
+            print(f"    sessions: {sessions}{extra}")
+            print(f"    updated:  {speaker.updated_at or '—'}")
+            print()
+        return 0
 
     if args.command == "device" and args.device_action == "clock":
         from ideaforge.device import run_device_clock

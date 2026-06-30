@@ -22,6 +22,7 @@ TOP_LEVEL_KEYS: Set[str] = {
     "speakers",
     "daemon",
     "export",
+    "sync",
     "audio_extensions",
 }
 
@@ -50,7 +51,15 @@ SECTION_KEYS: Dict[str, Set[str]] = {
         "max_parallel_sessions",
     },
     "diarization": {"hf_token", "min_speakers", "max_speakers"},
-    "speakers": {"map", "names"},
+    "speakers": {
+        "map",
+        "names",
+        "library_enabled",
+        "library_auto_apply",
+        "library_auto_learn",
+        "library_match_threshold",
+        "library_path",
+    },
     "daemon": {
         "poll_interval_seconds",
         "settle_seconds",
@@ -68,10 +77,18 @@ SECTION_KEYS: Dict[str, Set[str]] = {
         "obsidian_vault",
         "obsidian_note",
     },
+    "sync": {
+        "enabled",
+        "target",
+        "after_notes",
+        "scope",
+        "extra_args",
+    },
 }
 
 DEVICE_PROFILES = {"z28", "generic_wav"}
 CHUNK_MODES = {"gap", "silence", "fixed_window", "none"}
+SYNC_SCOPES = {"session", "device", "archive"}
 
 LLM_BACKENDS = {"auto", "ollama", "grok", "claude"}
 WHISPER_BACKENDS = {"auto", "mlx", "faster"}
@@ -146,6 +163,14 @@ def validate_config_values(cfg: IdeaForgeConfig) -> List[str]:
         issues.append("processing.split_silence_seconds must be > 0")
     if cfg.split_window_seconds <= 0:
         issues.append("processing.split_window_seconds must be > 0")
+    if cfg.speaker_library_match_threshold <= 0 or cfg.speaker_library_match_threshold > 1:
+        issues.append("speakers.library_match_threshold must be in (0, 1]")
+    if cfg.sync_scope not in SYNC_SCOPES:
+        issues.append(
+            f"invalid sync.scope '{cfg.sync_scope}' (expected one of {sorted(SYNC_SCOPES)})"
+        )
+    if cfg.sync_enabled and not cfg.sync_target.strip():
+        issues.append("sync.target must be set when sync.enabled = true")
 
     device_names: Set[str] = set()
     for device in cfg.devices:

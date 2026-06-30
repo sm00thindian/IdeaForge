@@ -63,6 +63,11 @@ def transcribe_audio(
     speaker_map: Optional[Dict[str, str]] = None,
     force: bool = False,
     output_stem: Optional[str] = None,
+    speaker_library_enabled: bool = False,
+    speaker_library_auto_apply: bool = True,
+    speaker_library_auto_learn: bool = True,
+    speaker_library_match_threshold: float = 0.75,
+    speaker_library_path: Optional[Path] = None,
 ) -> Optional[Path]:
     """Transcribe audio and optionally diarize. Returns path to transcript (.txt)."""
     stem = output_stem or audio_path.stem
@@ -120,6 +125,11 @@ def transcribe_audio(
                 speaker_map=speaker_map,
                 force=force,
                 output_stem=stem,
+                speaker_library_enabled=speaker_library_enabled,
+                speaker_library_auto_apply=speaker_library_auto_apply,
+                speaker_library_auto_learn=speaker_library_auto_learn,
+                speaker_library_match_threshold=speaker_library_match_threshold,
+                speaker_library_path=speaker_library_path,
             )
 
     mapping = speaker_map or {}
@@ -157,6 +167,11 @@ def diarize_existing(
     speaker_map: Optional[Dict[str, str]] = None,
     force: bool = False,
     output_stem: Optional[str] = None,
+    speaker_library_enabled: bool = False,
+    speaker_library_auto_apply: bool = True,
+    speaker_library_auto_learn: bool = True,
+    speaker_library_match_threshold: float = 0.75,
+    speaker_library_path: Optional[Path] = None,
 ) -> Optional[Path]:
     """Diarize an existing transcription without re-transcribing."""
     stem = output_stem or audio_path.stem
@@ -192,10 +207,14 @@ def diarize_existing(
             speaker_map=speaker_map,
             force=force,
             output_stem=stem,
+            speaker_library_enabled=speaker_library_enabled,
+            speaker_library_auto_apply=speaker_library_auto_apply,
+            speaker_library_auto_learn=speaker_library_auto_learn,
+            speaker_library_match_threshold=speaker_library_match_threshold,
+            speaker_library_path=speaker_library_path,
         )
 
-    mapping = speaker_map or {}
-    transcript_text = format_diarized_transcript(labeled, mapping)
+    transcript_text = format_diarized_transcript(labeled, speaker_map or {})
     transcript_path.write_text(transcript_text, encoding="utf-8")
     print(f"    ✓ Diarized transcript saved ({len(transcript_text):,} chars)")
     return transcript_path
@@ -212,6 +231,11 @@ def _apply_diarization(
     speaker_map: Optional[Dict[str, str]],
     force: bool,
     output_stem: Optional[str] = None,
+    speaker_library_enabled: bool = False,
+    speaker_library_auto_apply: bool = True,
+    speaker_library_auto_learn: bool = True,
+    speaker_library_match_threshold: float = 0.75,
+    speaker_library_path: Optional[Path] = None,
 ) -> List[TranscriptSegment]:
     stem = output_stem or audio_path.stem
     paths = _paths_for_stem(output_dir, stem)
@@ -246,8 +270,23 @@ def _apply_diarization(
             detail=f"Labeling segment {index}/{total}",
         )
 
+    from ideaforge.speaker_library import apply_speaker_library
+
+    combined_map = apply_speaker_library(
+        audio_path,
+        turns,
+        hf_token=hf_token or "",
+        speaker_map=speaker_map,
+        session_stem=stem,
+        enabled=speaker_library_enabled,
+        auto_apply=speaker_library_auto_apply,
+        auto_learn=speaker_library_auto_learn,
+        threshold=speaker_library_match_threshold,
+        library_path=speaker_library_path,
+    )
+
     labeled = assign_speakers(segments, turns, on_progress=_label_progress)
-    labeled = rename_segments(labeled, speaker_map or {})
+    labeled = rename_segments(labeled, combined_map)
 
     paths["diarized"].write_text(
         json.dumps([s.to_dict() for s in labeled], indent=2, ensure_ascii=False),

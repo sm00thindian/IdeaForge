@@ -124,9 +124,9 @@ profile = "generic_wav"
 
 ### Phase C — Fleet ops (1.0.0)
 
-- [ ] **Web or TUI dashboard** — Optional; read-only view of `status.json` + queue across devices.
-- [ ] **Remote archive sync** — rsync/NAS hook after notes generated (not in core).
-- [ ] **Speaker library** — Reuse embeddings across sessions (pyannote/custom).
+- [x] **Web or TUI dashboard** — `ideaforge fleet` TUI + `fleet --serve` read-only web view (1.0.0).
+- [x] **Remote archive sync** — `[sync]` rsync hook after notes generated (1.0.0).
+- [x] **Speaker library** — pyannote embedding reuse via `[speakers]` library settings (1.0.0).
 
 ---
 
