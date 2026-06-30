@@ -33,6 +33,7 @@ def build_parser() -> argparse.ArgumentParser:
   ideaforge --auto-source --transcribe-only
   ideaforge --auto-source --ingest-only
   ideaforge --source ~/IdeaForge --retry-failed
+  ideaforge --status
   ideaforge --source /Volumes/Z29 --mode meeting --diarize
 """,
     )
@@ -105,6 +106,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--force", action="store_true", help="Reprocess even if outputs exist")
     parser.add_argument("--list-only", action="store_true", help="List audio files and exit")
     parser.add_argument("--detect", action="store_true", help="Show detected recorders and exit")
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help="Show pipeline progress, service health, and pending failures",
+    )
+    parser.add_argument(
+        "--status-json",
+        action="store_true",
+        help="Emit --status output as JSON (for scripting)",
+    )
 
     parser.add_argument(
         "--whisper-model",
@@ -251,6 +262,12 @@ def main(argv: Optional[list] = None) -> int:
             print(f"[{i}] {dev.label}")
             print(describe_device(dev))
             print()
+        return 0
+
+    if args.status or args.status_json:
+        from ideaforge.health import print_status_report
+
+        print_status_report(cfg, as_json=args.status_json)
         return 0
 
     if args.daemon:

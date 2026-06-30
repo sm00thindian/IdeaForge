@@ -37,7 +37,7 @@ from ideaforge.ingest import (
     save_processed_log,
 )
 from ideaforge.llm import process_transcript
-from ideaforge.notify import ProcessResult, RecordingResult
+from ideaforge.notify import ProcessResult, RecordingResult, notify_session_failure
 from ideaforge.pipeline import PipelineStages, should_skip_group
 from ideaforge.status import StatusReporter, active_reporter, build_step_plan
 from ideaforge.transcribe import diarize_existing, transcribe_audio
@@ -103,6 +103,20 @@ def print_run_header(
             f"   Speakers: {len(cfg.speaker_map)} manual override(s) "
             "(Grok infers names by default)"
         )
+
+
+def _handle_session_failure(
+    group: RecordingGroup,
+    exc: Exception,
+    *,
+    reporter: Optional[StatusReporter],
+    notify: bool,
+) -> None:
+    print(f"\n⚠️  Session failed {group.label} — {exc}")
+    if reporter is not None:
+        reporter.set_error(str(exc))
+    if notify:
+        notify_session_failure(group.session_stem, str(exc))
 
 
 def _try_remove_from_device(
@@ -560,8 +574,12 @@ def process_source(
                 try:
                     processed, skipped, brief = _run_session(session_index, group)
                 except Exception as exc:
-                    print(f"\n⚠️  Session failed {group.label} — {exc}")
-                    reporter.set_error(str(exc))
+                    _handle_session_failure(
+                        group,
+                        exc,
+                        reporter=reporter,
+                        notify=cfg.notify_on_failure,
+                    )
                     brief = RecordingResult(stem=group.session_stem, failed=True)
                     result.recordings.append(brief)
                     continue
@@ -579,8 +597,12 @@ def process_source(
                     try:
                         processed, skipped, brief = future.result()
                     except Exception as exc:
-                        print(f"\n⚠️  Session failed {group.label} — {exc}")
-                        reporter.set_error(str(exc))
+                        _handle_session_failure(
+                            group,
+                            exc,
+                            reporter=reporter,
+                            notify=cfg.notify_on_failure,
+                        )
                         brief = RecordingResult(stem=group.session_stem, failed=True)
                         result.recordings.append(brief)
                         continue

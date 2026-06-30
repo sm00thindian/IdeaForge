@@ -2,6 +2,14 @@
 
 All notable changes to IdeaForge are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.3] - 2026-06-30
+
+### Added
+
+- **`ideaforge --status`** — Pipeline state from `status.json`, daemon/menubar health, pending failure count, connected recorder.
+- **`--status-json`** — Machine-readable status output for scripting.
+- **`notify_on_failure`** — Opt-in macOS notification when a pipeline session fails (`[daemon]` config).
+
 ## [0.5.2] - 2026-06-30
 
 ### Added
@@ -58,6 +66,7 @@ All notable changes to IdeaForge are documented here. Format follows [Keep a Cha
 
 Prior releases were not changelogged in-repo. See git history for daemon, Grok/Claude/Ollama backends, faster-whisper + pyannote diarization, and USB ingest.
 
+[0.5.3]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.5.3
 [0.5.2]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.5.2
 [0.5.1]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.5.1
 [0.5.0]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.5.0

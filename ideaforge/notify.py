@@ -138,6 +138,29 @@ def notify_mac(
         return False
 
 
+def format_failure_notification(
+    session_stem: str,
+    error: str,
+) -> tuple[str, str, str]:
+    """Return (title, subtitle, message) for a session failure notification."""
+    title = "IdeaForge"
+    subtitle = "Session failed"
+    message = session_stem
+    detail = error.strip()
+    if detail:
+        message = f"{session_stem} — {detail[:240]}"
+    return title, subtitle, message
+
+
+def notify_session_failure(session_stem: str, error: str) -> bool:
+    """Show a macOS notification for a failed pipeline session."""
+    title, subtitle, message = format_failure_notification(session_stem, error)
+    if notify_mac(title=title, message=message, subtitle=subtitle):
+        print(f"    🔔 Failure notification sent: {session_stem}")
+        return True
+    return False
+
+
 def notify_process_complete(
     result: ProcessResult,
     *,

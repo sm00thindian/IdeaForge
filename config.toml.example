@@ -44,6 +44,7 @@ settle_seconds = 5          # wait after mount before processing
 delete_after_copy = true    # remove recordings from device after verified local copy
 unmount_after_ingest = true # eject volume after all files are copied and verified locally
 notify = true               # macOS notification when pipeline finishes
+notify_on_failure = false   # macOS alert when a pipeline session fails (opt-in)
 
 # Menu bar progress UI (optional):
 #   ./scripts/install-menubar.sh

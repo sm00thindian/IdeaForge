@@ -95,6 +95,7 @@ class IdeaForgeConfig:
     daemon_delete_after_copy: bool = True
     daemon_unmount_after_ingest: bool = True
     daemon_notify: bool = True
+    notify_on_failure: bool = False
     export_reminders: bool = False
     export_reminders_list: str = "IdeaForge"
     export_obsidian: bool = False
@@ -179,6 +180,8 @@ class IdeaForgeConfig:
                 cfg.daemon_unmount_after_ingest = bool(daemon["unmount_after_ingest"])
             if "notify" in daemon:
                 cfg.daemon_notify = bool(daemon["notify"])
+            if "notify_on_failure" in daemon:
+                cfg.notify_on_failure = bool(daemon["notify_on_failure"])
         if "export" in data:
             export = data["export"]
             cfg.export_reminders = bool(export.get("reminders", cfg.export_reminders))

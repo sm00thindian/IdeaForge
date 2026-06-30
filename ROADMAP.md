@@ -36,8 +36,13 @@ Prioritized work after **0.5.0**. Items are grouped by tier (impact vs effort) a
 
 ### 0.5.3 patch targets
 
-- [ ] **`ideaforge status`** — Print `status.json`, daemon/menubar health, pending failure count.
-- [ ] **Failure notification** — macOS alert when a session fails (optional config).
+- [x] **`ideaforge --status`** — Print `status.json`, daemon/menubar health, pending failure count.
+- [x] **Failure notification** — macOS alert when a session fails (`notify_on_failure` config).
+
+### 0.5.4 patch targets
+
+- [ ] **Menubar “Open Log” opens Terminal tail** — `tail -f` in Terminal.app instead of log file in editor.
+- [ ] **Status watch mode** — `ideaforge --status --watch` refreshes every N seconds.
 
 ---
 

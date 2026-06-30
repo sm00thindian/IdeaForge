@@ -157,6 +157,7 @@ settle_seconds = 5
 delete_after_copy = true      # remove from device after verified copy
 unmount_after_ingest = true   # eject volume after ingest completes
 notify = true                 # macOS popup when pipeline finishes
+notify_on_failure = false     # opt-in alert when a session fails
 ```
 
 For Claude instead of Grok:
@@ -243,6 +244,13 @@ ideaforge --source ~/IdeaForge --retry-failed
 ```
 
 The daemon also picks up pending failures automatically on the next plug-in (even if there are no new recordings).
+
+**Check status** (pipeline, services, pending failures):
+
+```bash
+ideaforge --status
+ideaforge --status-json    # for scripting
+```
 
 **Ingest only** (test copy/verify/purge without ML):
 
