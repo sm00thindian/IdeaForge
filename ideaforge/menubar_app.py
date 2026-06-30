@@ -12,7 +12,7 @@ from typing import IO, List, Optional
 from ideaforge.branding import notification_icon_path
 from ideaforge.config import IdeaForgeConfig
 from ideaforge.health import DAEMON_LOG_PATH, open_daemon_log_tail
-from ideaforge.ingest import failed_session_stems, load_processed_log
+from ideaforge.archive_status import pending_failure_count
 from ideaforge.status import (
     STATE_COMPLETE,
     STATE_ERROR,
@@ -34,19 +34,16 @@ from ideaforge.status import (
 LOCK_PATH = Path.home() / "Library" / "Application Support" / "IdeaForge" / "menubar.lock"
 
 
-def _resolve_archive_path() -> Path:
+def _load_config() -> IdeaForgeConfig:
     cfg = IdeaForgeConfig()
     config_path = cfg.default_config_path()
     if config_path.is_file():
         cfg = IdeaForgeConfig.from_toml(config_path)
-    return cfg.archive.expanduser()
+    return cfg
 
 
-def _pending_failure_count(archive: Path) -> int:
-    try:
-        return len(failed_session_stems(load_processed_log(archive)))
-    except OSError:
-        return 0
+def _resolve_archive_path() -> Path:
+    return _load_config().archive.expanduser()
 
 
 def _menu_title_with_failures(status: PipelineStatus, failure_count: int) -> str:
@@ -162,7 +159,7 @@ class IdeaForgeMenuBarApp:
 
     def refresh(self, _) -> None:
         status = load_status()
-        failure_count = _pending_failure_count(self._archive_path)
+        failure_count = pending_failure_count(_load_config())
         title = _menu_title_with_failures(status, failure_count)
         # Title appears beside the icon on the same menu bar item.
         self.app.title = "" if title == "IdeaForge" else title

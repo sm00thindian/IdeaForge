@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Optional
 from ideaforge import __version__
 from ideaforge.config import IdeaForgeConfig
 from ideaforge.device import find_recorder_mounts
-from ideaforge.ingest import failed_session_stems, load_processed_log
+from ideaforge.archive_status import collect_archive_failures, retry_failed_hint
 from ideaforge.status import (
     STATE_COMPLETE,
     STATE_ERROR,
@@ -163,10 +163,8 @@ def _pipeline_lines(status: PipelineStatus) -> List[str]:
 
 def collect_status_snapshot(cfg: IdeaForgeConfig) -> Dict[str, Any]:
     archive = cfg.archive.expanduser().resolve()
-    processed_log = load_processed_log(archive)
-    failures = sorted(failed_session_stems(processed_log))
-    failure_details = processed_log.get("failures", {})
-    devices = find_recorder_mounts() if _is_darwin() else []
+    failures, failure_details, archive_devices = collect_archive_failures(cfg)
+    mounts = find_recorder_mounts(cfg=cfg) if _is_darwin() else []
 
     pipeline = load_status()
     daemon = check_daemon_health()
@@ -178,6 +176,7 @@ def collect_status_snapshot(cfg: IdeaForgeConfig) -> Dict[str, Any]:
         "pending_failures": failures,
         "failure_count": len(failures),
         "failures": failure_details,
+        "archive_devices": archive_devices,
         "pipeline": pipeline.to_dict(),
         "services": {
             "daemon": asdict(daemon),
@@ -189,7 +188,7 @@ def collect_status_snapshot(cfg: IdeaForgeConfig) -> Dict[str, Any]:
                 "mount_path": str(device.mount_path),
                 "recording_count": device.recording_count,
             }
-            for device in devices
+            for device in mounts
         ],
         "paths": {
             "status_json": str(default_status_path()),
@@ -226,9 +225,23 @@ def format_status_report(cfg: IdeaForgeConfig) -> str:
         preview = ", ".join(failures[:3])
         extra = f" (+{len(failures) - 3} more)" if len(failures) > 3 else ""
         lines.append(f"  Failures:   {len(failures)} pending — {preview}{extra}")
-        lines.append("              Retry: ideaforge --source ~/IdeaForge --retry-failed")
+        lines.append(f"              Retry: {retry_failed_hint(cfg)}")
     else:
         lines.append("  Failures:   none pending")
+
+    archive_devices = snapshot.get("archive_devices", [])
+    if len(archive_devices) > 1:
+        lines.append("")
+        lines.append("  Device archives")
+        for device in archive_devices:
+            root_name = Path(device["archive_root"]).name
+            if device["failure_count"]:
+                lines.append(
+                    f"    {device['name']}: {device['failure_count']} failure(s) "
+                    f"({root_name}/)"
+                )
+            else:
+                lines.append(f"    {device['name']}: ok ({root_name}/)")
 
     recorders = snapshot["recorders"]
     lines.append("")

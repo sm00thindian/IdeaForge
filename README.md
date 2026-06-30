@@ -85,7 +85,10 @@ cd IdeaForge
 python3 -m venv venv
 source venv/bin/activate
 pip install -e ".[all]"
+brew install ffmpeg    # MP3/FLAC ingest and silence/window splitting (0.9.0+)
 ```
+
+`ffmpeg` is optional for WAV-only Z28 workflows; required for `normalize_audio` on MP3/FLAC and for `chunk_mode = silence | fixed_window`. `rsync` is required only when `[sync]` remote push is enabled.
 
 Minimal install:
 
@@ -257,13 +260,15 @@ ideaforge --reprocess --source ~/IdeaForge/2026-06-27 --session R2026-06-27-07-4
 ideaforge --reprocess --source ~/IdeaForge/2026-06-27 --llm-only   # stage-specific
 ```
 
-**Check status** (pipeline, services, pending failures):
+**Check status** (pipeline, services, pending failures — aggregates per-device archives when `[[devices]]` is set):
 
 ```bash
 ideaforge --status
 ideaforge --status --watch                    # live refresh (Ctrl+C to stop)
 ideaforge --status --watch --watch-interval 5
 ideaforge --status-json                       # for scripting
+ideaforge fleet                               # per-device queues and failures (1.0.0+)
+ideaforge fleet --serve --port 8765           # read-only web dashboard (localhost)
 ```
 
 The menu bar **Open Log** item opens Terminal with `tail -f` on the daemon log.
@@ -347,17 +352,77 @@ profile = "generic_wav"
 - **With `[[devices]]`** — each named device archives under `~/IdeaForge/{name}/YYYY-MM-DD/`; daemon can process multiple configured mounts (one per poll cycle).
 - **`ideaforge --detect`** — shows profile and config name for each matched volume.
 
+### Upgrading from flat archive to `[[devices]]`
+
+If you added `[[devices]]` after sessions already lived at `~/IdeaForge/YYYY-MM-DD/`, older folders remain at the archive root. New ingest goes to `~/IdeaForge/{name}/YYYY-MM-DD/`. Both layouts work — no forced migration.
+
+| Situation | What to do |
+|-----------|------------|
+| Re-run notes on old sessions | `ideaforge --reprocess --source ~/IdeaForge/2026-06-29` (root date folder) |
+| Re-run notes on new device path | `ideaforge --reprocess --source ~/IdeaForge/z28/2026-06-30` |
+| Optional tidy-up | Move date folders under the device subdir manually; keep `.processed_log.json` per root |
+| Failure retry with `[[devices]]` | `ideaforge --source ~/IdeaForge/z28 --retry-failed` (device archive root) |
+
+`ideaforge --status` and the menubar failure badge aggregate failures from each device archive (not only the root log).
+
+## Heterogeneous audio (0.9.0)
+
+Non-WAV sources (MP3, FLAC, M4A, etc.) are converted to PCM WAV via ffmpeg before transcribe/diarize when `normalize_audio = true` (default).
+
+```toml
+[processing]
+normalize_audio = true
+chunk_mode = "gap"              # gap | silence | fixed_window | none
+split_silence_seconds = 3.0     # for silence mode
+split_window_seconds = 900      # for fixed_window mode (15 min segments)
+```
+
+- **`gap`** (default) — Z28-style: merge consecutive `R*` chunks; no splitting of long generic files.
+- **`silence`** / **`fixed_window`** — split long non-`R*` recordings into separate sessions.
+
+Meeting notes include YAML frontmatter with authoritative `date` and `recording_date_source` (`recset`, `filename`, or `mtime`).
+
+## Fleet ops (1.0.0)
+
+```bash
+ideaforge fleet                 # TUI: pipeline + per-device failures and pending queue
+ideaforge fleet --json
+ideaforge speakers list         # known speaker embeddings (after diarized sessions)
+```
+
+**Remote archive sync** (optional, after notes are generated):
+
+```toml
+[sync]
+enabled = true
+target = "user@nas:/backups/ideaforge"
+after_notes = true
+scope = "session"    # session | device | archive
+```
+
+Requires `rsync` on PATH. Sync runs automatically at the end of the summarize step when enabled.
+
+**Speaker library** — when diarization is on, pyannote embeddings are matched against `~/Library/Application Support/IdeaForge/speaker_library.json`. Configure in `[speakers]`:
+
+```toml
+[speakers]
+library_enabled = true
+library_auto_apply = true       # apply known names to new sessions
+library_auto_learn = true       # learn from [speakers.map] overrides
+library_match_threshold = 0.75
+```
+
 ## Archive layout
 
 Everything lands under the archive root from config (default `~/IdeaForge`). With `[[devices]]` configured, each device gets a subdirectory (`~/IdeaForge/office-z28/`, etc.). There is no separate `sessions/` or `notes/` tree — each **session** is a recorder filename stem (e.g. `R2026-06-27-07-43-11`), and all artifacts for that session live in the same **date folder**.
 
 ```
 ~/IdeaForge/
-├── .processed_log.json          # legacy single-device dedup log (at archive root)
+├── .processed_log.json          # legacy dedup log (root; pre-[[devices]] sessions)
 ├── office-z28/                  # when [[devices]] is configured
-│   ├── .processed_log.json
+│   ├── .processed_log.json      # per-device state (failures, hashes)
 │   └── YYYY-MM-DD/
-└── YYYY-MM-DD/                  # default layout without [[devices]]
+└── YYYY-MM-DD/                  # legacy flat layout (coexists after enabling [[devices]])
     ├── R2026-06-27-07-43-11.WAV           # source chunk copied from device
     ├── R2026-06-27-07-58-22.WAV           # second chunk (same session if gap ≤ chunk_gap_seconds)
     ├── R2026-06-27-07-43-11_merged.WAV    # merged audio when multiple chunks are grouped

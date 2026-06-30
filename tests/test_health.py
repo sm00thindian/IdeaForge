@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
-from ideaforge.config import IdeaForgeConfig
+from ideaforge.config import DeviceBinding, IdeaForgeConfig
 from ideaforge.health import (
     ServiceHealth,
     check_daemon_health,
@@ -148,6 +148,45 @@ def test_watch_status_report_refreshes_once_before_stop():
             pass
 
     assert len(calls) == 1
+
+
+def test_format_status_report_aggregates_device_failures(tmp_path: Path):
+    archive = tmp_path / "IdeaForge"
+    z28_root = archive / "z28"
+    z28_root.mkdir(parents=True)
+    log = load_processed_log(z28_root)
+    record_session_failure(
+        log,
+        session_stem="R2026-06-30-09-00-00",
+        archive_folder=z28_root / "2026-06-30",
+        archive_files=[],
+        chunk_hashes=[],
+        error="boom",
+        pipeline="test",
+    )
+    save_processed_log(z28_root, log)
+
+    cfg = IdeaForgeConfig(
+        archive=archive,
+        devices=[DeviceBinding(name="z28", mount_glob="NO NAME", profile="z28")],
+    )
+    with (
+        patch("ideaforge.health.check_daemon_health") as daemon,
+        patch("ideaforge.health.check_menubar_health") as menubar,
+        patch("ideaforge.health.find_recorder_mounts", return_value=[]),
+        patch("ideaforge.health.load_status") as load_status,
+    ):
+        daemon.return_value = ServiceHealth("com.ideaforge.daemon", True, False)
+        menubar.return_value = ServiceHealth("com.ideaforge.menubar", False, False)
+        reporter = StatusReporter(enabled=False)
+        reporter.set_watching()
+        load_status.return_value = reporter._status
+
+        report = format_status_report(cfg)
+
+    assert "z28/R2026-06-30-09-00-00" in report
+    assert "--retry-failed" in report
+    assert str(archive / "z28") in report
 
 
 def test_check_daemon_health_uses_pgrep_on_darwin():

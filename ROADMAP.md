@@ -130,6 +130,24 @@ profile = "generic_wav"
 
 ---
 
+## Post-1.0 polish
+
+### Tier 1 — Operator docs & consistency (1.0.1)
+
+- [x] **README 0.9/1.0** — `chunk_mode`, `normalize_audio`, fleet, sync, speaker library; `ffmpeg`/`rsync` soft deps.
+- [x] **Status aggregation** — `--status` and menubar sum per-device `.processed_log.json` when `[[devices]]` is set.
+- [x] **Archive migration note** — Document flat `~/IdeaForge/YYYY-MM-DD/` coexisting with `~/IdeaForge/{name}/`.
+- [x] **ROADMAP post-1.0** — Tier 1 + Tier 2 planning section (this doc).
+
+### Tier 2 — Production hardening (1.1.0)
+
+- [ ] **`ideaforge sync`** — Manual/dry-run rsync command (like `--export-only`); `--force` to bypass sync log dedup.
+- [ ] **`ideaforge speakers register`** — Name a speaker from a session stem + label; seed library without waiting for auto-learn.
+- [ ] **Per-device `chunk_mode`** — Optional `chunk_mode` on `[[devices]]` entries (e.g. field recorder on `fixed_window`, Z28 on `gap`).
+- [ ] **Mypy expansion** — Add `daemon.py`, `session_worker.py`, `fleet.py`, `archive_status.py` to mypy subset.
+
+---
+
 ## Explicit non-goals (for now)
 
 - Windows/Linux daemon parity (macOS LaunchAgent is the reference).

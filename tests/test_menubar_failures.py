@@ -3,11 +3,12 @@
 from pathlib import Path
 from unittest.mock import patch
 
+from ideaforge.archive_status import pending_failure_count
+from ideaforge.config import IdeaForgeConfig
 from ideaforge.ingest import load_processed_log, record_session_failure, save_processed_log
 from ideaforge.menubar_app import (
     IdeaForgeMenuBarApp,
     _menu_title_with_failures,
-    _pending_failure_count,
 )
 from ideaforge.status import (
     STATE_IDLE,
@@ -32,7 +33,8 @@ def test_pending_failure_count(tmp_path: Path):
         pipeline="test",
     )
     save_processed_log(archive, log)
-    assert _pending_failure_count(archive) == 1
+    cfg = IdeaForgeConfig(archive=archive)
+    assert pending_failure_count(cfg) == 1
 
 
 def test_menu_title_shows_failure_badge_when_idle():
@@ -72,7 +74,11 @@ def test_menubar_refresh_sets_failures_menu_item(tmp_path: Path):
     app.pipeline_item = type("Item", (), {"title": ""})()
     app.app = type("App", (), {"title": ""})()
 
-    with patch("ideaforge.menubar_app.load_status", return_value=PipelineStatus(state=STATE_IDLE)):
+    cfg = IdeaForgeConfig(archive=archive)
+    with (
+        patch("ideaforge.menubar_app.load_status", return_value=PipelineStatus(state=STATE_IDLE)),
+        patch("ideaforge.menubar_app._load_config", return_value=cfg),
+    ):
         app.refresh(None)
 
     assert "1 failed session" in app.failures_item.title

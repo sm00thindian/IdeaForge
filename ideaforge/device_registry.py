@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from ideaforge.device_profiles import DeviceProfile, get_profile, mount_matches_glob
 
@@ -19,6 +19,17 @@ def archive_device_root(cfg: "IdeaForgeConfig", device_name: Optional[str] = Non
     if device_name and cfg.devices:
         return root / device_name
     return root
+
+
+def list_device_archive_roots(cfg: "IdeaForgeConfig") -> List[Tuple[str, Path]]:
+    """Return ``(device_name, archive_root)`` pairs for status and fleet aggregation."""
+    archive = cfg.archive.expanduser().resolve()
+    if cfg.devices:
+        return [
+            (binding.name, archive_device_root(cfg, binding.name))
+            for binding in cfg.devices
+        ]
+    return [("default", archive)]
 
 
 def _binding_for_mount(

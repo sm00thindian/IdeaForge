@@ -7,26 +7,16 @@ import re
 from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from ideaforge import __version__
 from ideaforge.config import IdeaForgeConfig
-from ideaforge.device_registry import archive_device_root, find_recorder_mounts
+from ideaforge.device_registry import find_recorder_mounts, list_device_archive_roots
 from ideaforge.health import check_daemon_health, check_menubar_health
 from ideaforge.ingest import failed_session_stems, get_audio_files, is_derived_audio, load_processed_log
 from ideaforge.status import PipelineStatus, default_status_path, format_elapsed, load_status
 
 _DATE_FOLDER = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-
-
-def _device_roots(cfg: IdeaForgeConfig) -> List[Tuple[str, Path]]:
-    archive = cfg.archive.expanduser().resolve()
-    if cfg.devices:
-        return [
-            (binding.name, archive_device_root(cfg, binding.name))
-            for binding in cfg.devices
-        ]
-    return [("default", archive)]
 
 
 def _count_pending_audio(archive_root: Path, min_size_bytes: int) -> List[str]:
@@ -87,7 +77,7 @@ def collect_fleet_snapshot(cfg: IdeaForgeConfig) -> Dict[str, Any]:
             root,
             min_size_bytes=cfg.min_file_size_bytes,
         )
-        for name, root in _device_roots(cfg)
+        for name, root in list_device_archive_roots(cfg)
     ]
 
     total_failures = sum(device["failure_count"] for device in devices)

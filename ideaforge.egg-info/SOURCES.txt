@@ -15,6 +15,7 @@ ideaforge/device_profiles.py
 ideaforge/device_registry.py
 ideaforge/diarize.py
 ideaforge/export.py
+ideaforge/fleet.py
 ideaforge/gpu_lock.py
 ideaforge/health.py
 ideaforge/ingest.py
@@ -24,12 +25,14 @@ ideaforge/menubar_app.py
 ideaforge/notify.py
 ideaforge/pipeline.py
 ideaforge/prompts.py
+ideaforge/remote_sync.py
 ideaforge/reprocess.py
 ideaforge/runner.py
 ideaforge/schema.py
 ideaforge/session_pool.py
 ideaforge/session_time.py
 ideaforge/session_worker.py
+ideaforge/speaker_library.py
 ideaforge/speakers.py
 ideaforge/state_db.py
 ideaforge/status.py
@@ -71,6 +74,7 @@ tests/test_e2e_smoke.py
 tests/test_export.py
 tests/test_failure_isolation.py
 tests/test_failure_notify.py
+tests/test_fleet.py
 tests/test_gpu_smoke.py
 tests/test_health.py
 tests/test_ingest.py
@@ -85,6 +89,7 @@ tests/test_notify.py
 tests/test_parallel.py
 tests/test_pipeline.py
 tests/test_prompts.py
+tests/test_remote_sync.py
 tests/test_reprocess.py
 tests/test_runner_chunks.py
 tests/test_runner_purge.py
@@ -92,6 +97,7 @@ tests/test_save_grok_session.py
 tests/test_schema.py
 tests/test_session_failures.py
 tests/test_session_time.py
+tests/test_speaker_library.py
 tests/test_speakers.py
 tests/test_state_db.py
 tests/test_status.py

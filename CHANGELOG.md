@@ -2,6 +2,17 @@
 
 All notable changes to IdeaForge are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.1] - 2026-06-30
+
+### Added
+
+- **Per-device status aggregation** — `ideaforge --status` and menubar failure badge read `.processed_log.json` from each `[[devices]]` archive root (`archive_status.py`).
+
+### Changed
+
+- **README** — Documents 0.9.0 processing options, 1.0.0 fleet/sync/speakers, `ffmpeg`/`rsync` deps, and flat→per-device archive coexistence.
+- **ROADMAP** — Post-1.0 Tier 1 (done) and Tier 2 (1.1.0) planning.
+
 ## [1.0.0] - 2026-06-30
 
 ### Added
@@ -160,6 +171,7 @@ All notable changes to IdeaForge are documented here. Format follows [Keep a Cha
 
 Prior releases were not changelogged in-repo. See git history for daemon, Grok/Claude/Ollama backends, faster-whisper + pyannote diarization, and USB ingest.
 
+[1.0.1]: https://github.com/sm00thindian/IdeaForge/releases/tag/v1.0.1
 [1.0.0]: https://github.com/sm00thindian/IdeaForge/releases/tag/v1.0.0
 [0.9.0]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.9.0
 [0.8.0]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.8.0
