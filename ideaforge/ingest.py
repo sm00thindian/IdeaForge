@@ -7,7 +7,11 @@ import json
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, Set, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ideaforge.config import IdeaForgeConfig
 
 
 def compute_file_hash(file_path: Path, block_size: int = 65536) -> str:
@@ -131,6 +135,104 @@ def remove_device_file_after_copy(source: Path, archive_copy: Path) -> bool:
         return False
     source.unlink()
     return True
+
+
+@dataclass
+class IngestResult:
+    """Outcome of bulk device ingest (copy → verify → optional purge)."""
+
+    archive_files: List[Path] = field(default_factory=list)
+    files_copied: int = 0
+    files_verified: int = 0
+    files_deleted: int = 0
+    files_failed: int = 0
+
+    @property
+    def has_work(self) -> bool:
+        return bool(self.archive_files)
+
+    @property
+    def device_cleared(self) -> bool:
+        return self.files_failed == 0
+
+
+def ingest_device_recordings(
+    source: Path,
+    archive: Path,
+    cfg: "IdeaForgeConfig",
+    *,
+    delete_after_copy: bool = True,
+    reporter: Optional[Any] = None,
+) -> IngestResult:
+    """
+    Copy all recordings from a device mount to the archive, verify hashes,
+    then optionally remove verified sources from the device.
+
+    Intended for daemon runs so transcription runs only on local copies.
+    """
+    from ideaforge.device import is_path_on_recorder
+
+    extensions: Set[str] = set(cfg.audio_extensions)
+    device_files = get_audio_files(source, extensions, cfg.min_file_size_bytes)
+    result = IngestResult()
+    if not device_files:
+        return result
+
+    processed_log = load_processed_log(archive)
+    total = len(device_files)
+
+    print(f"\n📥 Ingesting {total} recording(s) from device → archive")
+    if reporter is not None:
+        reporter.touch(
+            stage="Ingesting",
+            progress=0.0,
+            detail=f"0/{total} files copied",
+            clear_progress=True,
+        )
+
+    for index, audio_file in enumerate(device_files, start=1):
+        archive_copy = find_archive_copy(audio_file, archive, processed_log)
+        if archive_copy is None:
+            dest_folder = archive_folder_for_file(audio_file, archive)
+            archive_copy = copy_file_safely(audio_file, dest_folder)
+            result.files_copied += 1
+            print(f"   📋 Copied {audio_file.name} → {archive_copy.parent.name}/")
+
+        if not verify_copy(audio_file, archive_copy):
+            print(f"   ⚠️  Archive copy not verified — kept on device: {audio_file.name}")
+            result.files_failed += 1
+            if reporter is not None:
+                reporter.touch(
+                    stage="Ingesting",
+                    progress=index / total,
+                    detail=f"{index}/{total} — verify failed for {audio_file.name}",
+                )
+            continue
+
+        result.files_verified += 1
+        result.archive_files.append(archive_copy)
+
+        if delete_after_copy and is_path_on_recorder(audio_file):
+            if remove_device_file_after_copy(audio_file, archive_copy):
+                result.files_deleted += 1
+                print(f"   🗑️  Removed from device: {audio_file.name}")
+            else:
+                print(f"   ⚠️  Could not remove from device: {audio_file.name}")
+                result.files_failed += 1
+
+        if reporter is not None:
+            reporter.touch(
+                stage="Ingesting",
+                progress=index / total,
+                detail=f"{index}/{total} files ingested",
+            )
+
+    if result.files_verified:
+        print(
+            f"   ✓ Ingest complete — {result.files_verified} verified"
+            f" ({result.files_deleted} removed from device)"
+        )
+    return result
 
 
 def record_processed(

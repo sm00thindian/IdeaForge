@@ -25,6 +25,7 @@ from ideaforge.ingest import (
     copy_file_safely,
     find_archive_copy,
     get_audio_files,
+    is_derived_audio,
     load_processed_log,
     record_processed,
     remove_device_file_after_copy,
@@ -399,10 +400,23 @@ def process_source(
     export_settings=None,
     show_header: bool = True,
     show_progress: bool = True,
+    scope_files: Optional[List[Path]] = None,
 ) -> ProcessResult:
     """Run the configured pipeline on all audio files under source."""
     extensions: Set[str] = set(cfg.audio_extensions)
-    audio_files = get_audio_files(source, extensions, cfg.min_file_size_bytes)
+    if scope_files is not None:
+        audio_files = sorted(
+            {
+                path
+                for path in scope_files
+                if path.is_file()
+                and path.stat().st_size >= cfg.min_file_size_bytes
+                and not is_derived_audio(path)
+            },
+            key=lambda p: p.stat().st_mtime,
+        )
+    else:
+        audio_files = get_audio_files(source, extensions, cfg.min_file_size_bytes)
     groups = group_recordings(
         audio_files,
         enabled=cfg.merge_chunks,
@@ -462,13 +476,11 @@ def process_source(
             for session_index, group in enumerate(iterator, start=1):
                 try:
                     processed, skipped, brief = _run_session(session_index, group)
-                except OSError as exc:
-                    print(f"\n⚠️  Cannot process {group.label} — {exc}")
+                except Exception as exc:
+                    print(f"\n⚠️  Session failed {group.label} — {exc}")
                     reporter.set_error(str(exc))
-                    continue
-                except ValueError as exc:
-                    print(f"\n⚠️  Cannot merge {group.label} — {exc}")
-                    reporter.set_error(str(exc))
+                    brief = RecordingResult(stem=group.session_stem, failed=True)
+                    result.recordings.append(brief)
                     continue
                 result.files_processed += processed
                 result.files_skipped += skipped
@@ -483,13 +495,11 @@ def process_source(
                     group = futures[future]
                     try:
                         processed, skipped, brief = future.result()
-                    except OSError as exc:
-                        print(f"\n⚠️  Cannot process {group.label} — {exc}")
+                    except Exception as exc:
+                        print(f"\n⚠️  Session failed {group.label} — {exc}")
                         reporter.set_error(str(exc))
-                        continue
-                    except ValueError as exc:
-                        print(f"\n⚠️  Cannot merge {group.label} — {exc}")
-                        reporter.set_error(str(exc))
+                        brief = RecordingResult(stem=group.session_stem, failed=True)
+                        result.recordings.append(brief)
                         continue
                     result.files_processed += processed
                     result.files_skipped += skipped

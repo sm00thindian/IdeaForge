@@ -16,6 +16,15 @@ class PipelineStages:
     diarize: bool
     llm: bool
 
+    def without_copy(self) -> "PipelineStages":
+        """Same pipeline minus archive copy (after daemon ingest)."""
+        return PipelineStages(
+            copy=False,
+            transcribe=self.transcribe,
+            diarize=self.diarize,
+            llm=self.llm,
+        )
+
     @property
     def label(self) -> str:
         parts = []

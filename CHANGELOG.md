@@ -2,6 +2,21 @@
 
 All notable changes to IdeaForge are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.1] - 2026-06-30
+
+### Added
+
+- **Daemon ingest-first** — Copy all device recordings to archive, verify hashes, delete sources, then unmount before transcribe/diarize/LLM runs on local files only.
+- **`unmount_after_ingest`** — Config flag (default `true`) to eject the recorder volume after successful ingest.
+- **Per-session failure isolation** — One bad session no longer blocks the rest of the queue.
+- **Diarization progress** — `status.json` shows audio duration hint and segment labeling progress.
+- **Menubar “Open Log”** — Menu item to open the daemon log.
+
+### Changed
+
+- Daemon default pipeline handler is `daemon_process_device` (ingest → process archive).
+- Manual `ideaforge --auto-source` still copies/deletes inline per session (unchanged).
+
 ## [0.5.0] - 2026-06-30
 
 ### Added
@@ -29,4 +44,5 @@ All notable changes to IdeaForge are documented here. Format follows [Keep a Cha
 
 Prior releases were not changelogged in-repo. See git history for daemon, Grok/Claude/Ollama backends, faster-whisper + pyannote diarization, and USB ingest.
 
-[0.5.0]: https://github.com/kilynn/IdeaForge/releases/tag/v0.5.0
+[0.5.1]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.5.1
+[0.5.0]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.5.0

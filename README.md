@@ -154,8 +154,9 @@ max_speakers = 6
 [daemon]
 poll_interval_seconds = 5
 settle_seconds = 5
-delete_after_copy = true  # remove from device after verified copy
-notify = true             # macOS popup when pipeline finishes
+delete_after_copy = true      # remove from device after verified copy
+unmount_after_ingest = true   # eject volume after ingest completes
+notify = true                 # macOS popup when pipeline finishes
 ```
 
 For Claude instead of Grok:
@@ -227,12 +228,13 @@ tail -f ~/Library/Logs/ideaforge/daemon.log
 **What happens on plug-in:**
 
 1. Device detected → wait `settle_seconds` for mount to stabilize
-2. Copy new recordings to `~/IdeaForge/YYYY-MM-DD/`
-3. Merge consecutive chunks into one session (when `merge_chunks = true`)
-4. Hash-verify archive copy → delete from device (if `delete_after_copy = true`)
-5. Transcribe → diarize → LLM meeting notes (Grok by default)
-6. Skip sessions already in `.processed_log.json` (SHA-256 dedup per chunk)
-7. macOS notification with meeting title and action item summary (`notify = true`)
+2. **Ingest first** — copy all new recordings to `~/IdeaForge/YYYY-MM-DD/`, hash-verify each copy, delete verified sources from device (`delete_after_copy = true`)
+3. **Unmount** — eject the volume when ingest succeeds and no recordings remain on device (`unmount_after_ingest = true`)
+4. **Process locally** — merge consecutive chunks, transcribe, diarize, LLM (runs on archive only; device is already unmounted)
+5. Skip sessions already in `.processed_log.json` (SHA-256 dedup per chunk)
+6. macOS notification with meeting title and action item summary (`notify = true`)
+
+Manual `ideaforge --auto-source` still copies and processes in one pass (no auto-unmount).
 
 Notifications use the IdeaForge icon when [terminal-notifier](https://github.com/julienXX/terminal-notifier) is installed (`brew install terminal-notifier`). Without it, macOS falls back to the default Script Editor icon.
 

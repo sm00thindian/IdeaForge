@@ -120,7 +120,7 @@ class IdeaForgeMenuBarApp:
             self.pipeline_item,
             None,
             rumps.MenuItem("Open Archive", callback=self.open_archive),
-            rumps.MenuItem("View Daemon Log", callback=self.open_log),
+            rumps.MenuItem("Open Log", callback=self.open_log),
             rumps.MenuItem("Open Status File", callback=self.open_status_file),
         ]
         self._timer = rumps.Timer(self.refresh, 1)

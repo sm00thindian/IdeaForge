@@ -24,9 +24,15 @@ Prioritized work after **0.5.0**. Items are grouped by tier (impact vs effort) a
 
 ### 0.5.1 patch targets
 
-- [ ] **Per-session failure isolation** — One bad WAV should not block the executor; mark failed in state DB and continue.
-- [ ] **Menubar “Open log”** — Menu item to tail `~/Library/Logs/ideaforge/daemon.log`.
-- [ ] **Status: diarization sub-progress** — Surface pyannote chunk index in `status.json` (transcribe already reports chunk N/M).
+- [x] **Per-session failure isolation** — One bad WAV should not block the executor; mark failed and continue.
+- [x] **Menubar “Open log”** — Menu item opens `~/Library/Logs/ideaforge/daemon.log`.
+- [x] **Status: diarization sub-progress** — Duration hint + segment labeling progress in `status.json`.
+- [x] **Daemon ingest-first** — Copy → verify → delete → unmount, then process from archive.
+
+### 0.5.2 patch targets
+
+- [ ] **Failed session state** — Persist failures in `.processed_log.json` or a separate failure log for retry.
+- [ ] **Ingest-only dry run** — `ideaforge --ingest-only` for testing copy/verify/unmount without ML.
 
 ---
 

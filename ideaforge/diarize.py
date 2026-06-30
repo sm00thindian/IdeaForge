@@ -141,17 +141,21 @@ def diarize_audio(
         if min_speakers or max_speakers:
             hint = f" (min={min_speakers or '—'}, max={max_speakers or '—'})"
         print(f"    🗣️  Running pyannote speaker diarization{hint} ...")
-        status_touch(
-            stage="Diarizing",
-            clear_progress=True,
-            detail=f"Analyzing {audio_path.name}",
-        )
-        reporter = active_reporter()
-        if reporter is not None:
-            reporter.set_step_active("diarize", detail=audio_path.name)
         pipeline = _load_pipeline(hf_token)
 
         audio_np, _ = load_audio_mono_16k(audio_path)
+        duration_min = max(1, int(len(audio_np) / TARGET_SAMPLE_RATE / 60))
+        status_touch(
+            stage="Diarizing",
+            clear_progress=True,
+            detail=f"Analyzing {audio_path.name} (~{duration_min} min audio)",
+        )
+        reporter = active_reporter()
+        if reporter is not None:
+            reporter.set_step_active(
+                "diarize",
+                detail=f"{audio_path.name} (~{duration_min} min)",
+            )
         waveform = torch.from_numpy(audio_np).unsqueeze(0)
         diar_kwargs = _diarization_kwargs(min_speakers, max_speakers)
 
@@ -161,6 +165,11 @@ def diarize_audio(
         )
 
         turns = _extract_turns(diarization)
+        status_touch(
+            stage="Diarizing",
+            progress=1.0,
+            detail=f"{len(turns)} speaker turns detected",
+        )
         print(f"    ✓ Diarization complete ({len(turns)} speaker turns)")
         return turns
     except Exception as exc:
@@ -178,13 +187,16 @@ def diarize_audio(
 def assign_speakers(
     segments: List[TranscriptSegment],
     turns: List[SpeakerTurn],
+    *,
+    on_progress: Optional[Any] = None,
 ) -> List[TranscriptSegment]:
     """Assign speaker labels to transcript segments by temporal overlap."""
     if not turns:
         return segments
 
     labeled: List[TranscriptSegment] = []
-    for seg in segments:
+    total = len(segments)
+    for index, seg in enumerate(segments, start=1):
         speaker = _best_speaker_for_segment(seg.start, seg.end, turns)
         labeled.append(
             TranscriptSegment(
@@ -194,6 +206,8 @@ def assign_speakers(
                 speaker=speaker,
             )
         )
+        if on_progress and (index == 1 or index == total or index % 25 == 0):
+            on_progress(index, total)
     return labeled
 
 

@@ -239,7 +239,14 @@ def _apply_diarization(
     if not turns:
         return segments
 
-    labeled = assign_speakers(segments, turns)
+    def _label_progress(index: int, total: int) -> None:
+        status_touch(
+            stage="Diarizing",
+            progress=index / total if total else None,
+            detail=f"Labeling segment {index}/{total}",
+        )
+
+    labeled = assign_speakers(segments, turns, on_progress=_label_progress)
     labeled = rename_segments(labeled, speaker_map or {})
 
     paths["diarized"].write_text(

@@ -10,10 +10,11 @@ from pathlib import Path
 from typing import Callable, Dict, Optional, Set
 
 from ideaforge.config import IdeaForgeConfig
-from ideaforge.device import RecorderDevice, find_recorder_mounts
+from ideaforge.device import RecorderDevice, find_recorder_mounts, unmount_volume
+from ideaforge.ingest import get_audio_files, ingest_device_recordings
 from ideaforge.pipeline import PipelineStages, resolve_stages
-from ideaforge.notify import notify_process_complete
-from ideaforge.runner import ProcessResult, process_source
+from ideaforge.notify import ProcessResult, notify_process_complete
+from ideaforge.runner import process_source
 from ideaforge.status import StatusReporter
 
 
@@ -47,6 +48,57 @@ def snapshot_device(device: RecorderDevice) -> DeviceSnapshot:
     return DeviceSnapshot.from_device(device)
 
 
+def daemon_process_device(
+    source: Path,
+    archive: Path,
+    cfg: IdeaForgeConfig,
+    stages: PipelineStages,
+    *,
+    force: bool = False,
+    export_settings=None,
+    reporter: Optional[StatusReporter] = None,
+    **_kwargs,
+) -> ProcessResult:
+    """
+    Daemon pipeline: ingest device files locally first (copy → verify → purge),
+    optionally unmount, then transcribe/diarize/summarize from archive only.
+    """
+    ingest = ingest_device_recordings(
+        source,
+        archive,
+        cfg,
+        delete_after_copy=cfg.daemon_delete_after_copy,
+        reporter=reporter,
+    )
+
+    if ingest.files_failed:
+        print("   ⚠️  Ingest incomplete — device will stay mounted")
+
+    if cfg.daemon_unmount_after_ingest and ingest.device_cleared:
+        extensions = set(cfg.audio_extensions)
+        remaining = get_audio_files(source, extensions, cfg.min_file_size_bytes)
+        if not remaining:
+            label = source.name
+            if unmount_volume(source):
+                print(f"   📴 Unmounted {label}")
+            else:
+                print(f"   ⚠️  Could not unmount {label}")
+
+    if not ingest.has_work:
+        return ProcessResult()
+
+    return process_source(
+        archive,
+        archive,
+        cfg,
+        stages.without_copy(),
+        force=force,
+        delete_from_device=False,
+        export_settings=export_settings,
+        scope_files=ingest.archive_files,
+    )
+
+
 class RecorderWatcher:
     """Poll /Volumes for USB recorders and trigger the pipeline on connect or new files."""
 
@@ -59,7 +111,7 @@ class RecorderWatcher:
         settle_seconds: float = 5.0,
         force: bool = False,
         sleep_fn: Callable[[float], None] = time.sleep,
-        process_fn: Callable[..., int] = process_source,
+        process_fn: Callable[..., ProcessResult] = daemon_process_device,
     ) -> None:
         self.cfg = cfg
         self.stages = stages
@@ -134,8 +186,8 @@ class RecorderWatcher:
             self.cfg,
             self.stages,
             force=self.force,
-            delete_from_device=self.cfg.daemon_delete_after_copy,
             export_settings=self.cfg.export_settings(force=self.force),
+            reporter=self._status,
         )
         if self.cfg.daemon_notify and (
             pipeline_result.files_processed > 0 or pipeline_result.files_skipped > 0

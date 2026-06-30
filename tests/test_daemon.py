@@ -35,7 +35,7 @@ def _watcher(**kwargs) -> RecorderWatcher:
         "poll_interval": 1.0,
         "settle_seconds": 0.0,
         "sleep_fn": lambda _s: None,
-        "process_fn": MagicMock(return_value=1),
+        "process_fn": MagicMock(return_value=ProcessResult(files_processed=1)),
     }
     defaults.update(kwargs)
     return RecorderWatcher(**defaults)

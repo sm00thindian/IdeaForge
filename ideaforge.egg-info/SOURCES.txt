@@ -12,6 +12,7 @@ ideaforge/daemon.py
 ideaforge/device.py
 ideaforge/diarize.py
 ideaforge/export.py
+ideaforge/gpu_lock.py
 ideaforge/ingest.py
 ideaforge/llm.py
 ideaforge/menubar_app.py
@@ -50,6 +51,7 @@ tests/test_ingest.py
 tests/test_llm.py
 tests/test_menubar_lock.py
 tests/test_notify.py
+tests/test_parallel.py
 tests/test_pipeline.py
 tests/test_prompts.py
 tests/test_runner_chunks.py

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
@@ -103,6 +104,22 @@ def is_path_on_recorder(file_path: Path, volumes_root: Path = Path("/Volumes")) 
         return False
     volume = volumes_root / parts[2]
     return is_recorder_volume(volume)
+
+
+def unmount_volume(mount_path: Path) -> bool:
+    """Unmount a recorder volume after ingest (macOS diskutil)."""
+    if not mount_path.is_dir():
+        return False
+    try:
+        completed = subprocess.run(
+            ["diskutil", "unmount", str(mount_path)],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, FileNotFoundError):
+        return False
+    return completed.returncode == 0
 
 
 def describe_device(device: RecorderDevice) -> str:

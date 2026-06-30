@@ -17,6 +17,7 @@ class RecordingResult:
     action_items: int = 0
     action_preview: List[str] = field(default_factory=list)
     skipped: bool = False
+    failed: bool = False
 
 
 @dataclass
