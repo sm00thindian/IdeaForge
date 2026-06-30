@@ -35,12 +35,27 @@ def build_parser() -> argparse.ArgumentParser:
   ideaforge --source ~/IdeaForge --retry-failed
   ideaforge --reprocess --source ~/IdeaForge/2026-06-27
   ideaforge --reprocess --source ~/IdeaForge --from 2026-06-25 --to 2026-06-30
+  ideaforge device clock
+  ideaforge --validate-config
   ideaforge --status
   ideaforge --status --watch
   ideaforge --source /Volumes/Z29 --mode meeting --diarize
 """,
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+
+    subparsers = parser.add_subparsers(dest="command")
+    device_parser = subparsers.add_parser("device", help="USB recorder utilities")
+    device_subparsers = device_parser.add_subparsers(dest="device_action", required=True)
+    device_clock_parser = device_subparsers.add_parser(
+        "clock",
+        help="Compare recset.txt clock to system time",
+    )
+    device_clock_parser.add_argument(
+        "--source",
+        type=Path,
+        help="Recorder mount path (default: auto-detect sole device)",
+    )
 
     source = parser.add_mutually_exclusive_group()
     source.add_argument("--source", type=Path, help="Mounted recorder or folder path")
@@ -133,6 +148,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--force", action="store_true", help="Reprocess even if outputs exist")
     parser.add_argument("--list-only", action="store_true", help="List audio files and exit")
     parser.add_argument("--detect", action="store_true", help="Show detected recorders and exit")
+    parser.add_argument(
+        "--device-clock",
+        action="store_true",
+        help="Compare recorder recset.txt clock to system time (alias for device clock)",
+    )
+    parser.add_argument(
+        "--validate-config",
+        action="store_true",
+        help="Validate config.toml and exit",
+    )
     parser.add_argument(
         "--status",
         action="store_true",
@@ -290,6 +315,28 @@ def main(argv: Optional[list] = None) -> int:
     args = parser.parse_args(argv)
     cfg = resolve_config(args)
 
+    if args.command == "device" and args.device_action == "clock":
+        from ideaforge.device import run_device_clock
+
+        return run_device_clock(getattr(args, "source", None))
+
+    if args.device_clock:
+        from ideaforge.device import run_device_clock
+
+        return run_device_clock(args.source)
+
+    if args.validate_config:
+        from ideaforge.config_validate import ConfigValidationError, validate_config_file
+
+        path = args.config or IdeaForgeConfig().default_config_path()
+        try:
+            validate_config_file(path)
+        except ConfigValidationError as exc:
+            print(f"❌ Invalid config ({path}):\n{exc}")
+            return 1
+        print(f"✓ Config OK — {path}")
+        return 0
+
     if args.detect:
         devices = find_recorder_mounts()
         if not devices:
@@ -321,11 +368,17 @@ def main(argv: Optional[list] = None) -> int:
     if args.daemon:
         from ideaforge.daemon import run_daemon
 
+        config_path = args.config
+        if config_path is None:
+            default = IdeaForgeConfig().default_config_path()
+            config_path = default if default.exists() else None
+
         return run_daemon(
             cfg,
             args,
             poll_interval=args.daemon_interval,
             settle_seconds=args.daemon_settle,
+            config_path=config_path,
         )
 
     archive = cfg.archive.expanduser().resolve()

@@ -315,6 +315,12 @@ Start with `1` on memory-constrained machines; `2` is a good balance on Apple Si
 
 Z28/Z29 devices store wall time in `recset.txt` (e.g. `TIME:14:24 2025/7/7`). Filenames use that clock. If the device date is wrong, filenames look like the wrong year — archive folders still follow the filename stem. The LLM may guess dates from speech; treat `metadata` and archive paths as ground truth.
 
+```bash
+ideaforge device clock              # compare device vs system time
+ideaforge --device-clock            # alias
+ideaforge --validate-config         # check config.toml before restarting daemon
+```
+
 ## Speaker names
 
 Transcripts use pyannote labels: `[SPEAKER_00]`, `[SPEAKER_01]`, etc.

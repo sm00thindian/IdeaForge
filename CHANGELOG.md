@@ -2,6 +2,14 @@
 
 All notable changes to IdeaForge are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.6.0] - 2026-06-30
+
+### Added
+
+- **`ideaforge device clock`** — Parse `recset.txt`, compare device time to system clock, show skew (`--device-clock` alias).
+- **`ideaforge --validate-config`** — Check config.toml for unknown keys and invalid values.
+- **Daemon config validation** — LaunchAgent daemon exits immediately on invalid config.
+
 ## [0.5.5] - 2026-06-30
 
 ### Added
@@ -80,6 +88,7 @@ All notable changes to IdeaForge are documented here. Format follows [Keep a Cha
 
 Prior releases were not changelogged in-repo. See git history for daemon, Grok/Claude/Ollama backends, faster-whisper + pyannote diarization, and USB ingest.
 
+[0.6.0]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.6.0
 [0.5.5]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.5.5
 [0.5.4]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.5.4
 [0.5.3]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.5.3

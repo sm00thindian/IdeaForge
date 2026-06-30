@@ -51,8 +51,13 @@ Prioritized work after **0.5.0**. Items are grouped by tier (impact vs effort) a
 
 ### 0.6.0 targets (Tier 2)
 
-- [ ] **Recorder clock helper** — `ideaforge device clock` — read `recset.txt`, show skew vs system time.
-- [ ] **Config validation** — Fail fast on unknown keys / bad paths at daemon start.
+- [x] **Recorder clock helper** — `ideaforge device clock` — read `recset.txt`, show skew vs system time.
+- [x] **Config validation** — Fail fast on unknown keys / bad paths at daemon start (`--validate-config`).
+
+### 0.6.1 patch targets
+
+- [ ] **Archive layout docs** — Document output tree in README (Tier 2 carry-over).
+- [ ] **LaunchAgent reload note** — When to `launchctl kickstart` after config/env changes.
 
 ---
 

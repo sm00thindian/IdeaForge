@@ -273,8 +273,19 @@ def run_daemon(
     *,
     poll_interval: Optional[float] = None,
     settle_seconds: Optional[float] = None,
+    config_path: Optional[Path] = None,
 ) -> int:
     """Run the recorder watcher until SIGINT/SIGTERM."""
+    from ideaforge.config_validate import ConfigValidationError, validate_config_file
+
+    path = config_path or cfg.default_config_path()
+    if path.is_file():
+        try:
+            validate_config_file(path)
+        except ConfigValidationError as exc:
+            print(f"❌ Invalid config ({path}):\n{exc}", file=sys.stderr)
+            return 1
+
     interval = poll_interval if poll_interval is not None else cfg.daemon_poll_interval
     settle = settle_seconds if settle_seconds is not None else cfg.daemon_settle_seconds
     stages = resolve_stages(args, cfg)
