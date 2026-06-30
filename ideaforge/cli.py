@@ -33,6 +33,8 @@ def build_parser() -> argparse.ArgumentParser:
   ideaforge --auto-source --transcribe-only
   ideaforge --auto-source --ingest-only
   ideaforge --source ~/IdeaForge --retry-failed
+  ideaforge --reprocess --source ~/IdeaForge/2026-06-27
+  ideaforge --reprocess --source ~/IdeaForge --from 2026-06-25 --to 2026-06-30
   ideaforge --status
   ideaforge --status --watch
   ideaforge --source /Volumes/Z29 --mode meeting --diarize
@@ -101,6 +103,30 @@ def build_parser() -> argparse.ArgumentParser:
         "--retry-failed",
         action="store_true",
         help="Process only sessions that failed in a prior run",
+    )
+    parser.add_argument(
+        "--reprocess",
+        action="store_true",
+        help="Re-run pipeline on archived sessions (--source required; implies --force, no copy)",
+    )
+    parser.add_argument(
+        "--from",
+        dest="reprocess_from",
+        metavar="DATE",
+        help="With --reprocess: start date YYYY-MM-DD (archive root source)",
+    )
+    parser.add_argument(
+        "--to",
+        dest="reprocess_to",
+        metavar="DATE",
+        help="With --reprocess: end date YYYY-MM-DD (archive root source)",
+    )
+    parser.add_argument(
+        "--session",
+        dest="reprocess_sessions",
+        action="append",
+        metavar="STEM",
+        help="With --reprocess: limit to session stem (repeatable)",
     )
     parser.add_argument("--no-transcribe", action="store_true", help="Skip transcription")
     parser.add_argument("--no-llm", action="store_true", help="Skip LLM summarization")
@@ -330,6 +356,15 @@ def main(argv: Optional[list] = None) -> int:
             f"{ingest.files_deleted} removed from device"
         )
         return 0
+
+    if args.reprocess:
+        from ideaforge.reprocess import run_reprocess
+
+        return run_reprocess(
+            cfg,
+            args,
+            export_settings=resolve_export_settings(cfg, args),
+        )
 
     if args.export_only:
         if not args.source:

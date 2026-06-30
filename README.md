@@ -243,7 +243,16 @@ Manual `ideaforge --auto-source` still copies and processes in one pass (no auto
 ideaforge --source ~/IdeaForge --retry-failed
 ```
 
-The daemon also picks up pending failures automatically on the next plug-in (even if there are no new recordings).
+The daemon also picks up pending failures automatically on the next plug-in (even if there are no new recordings). The menu bar shows `⚠N` when failures are pending.
+
+**Reprocess archived sessions** (full pipeline redo, no copy):
+
+```bash
+ideaforge --reprocess --source ~/IdeaForge/2026-06-27
+ideaforge --reprocess --source ~/IdeaForge --from 2026-06-25 --to 2026-06-30
+ideaforge --reprocess --source ~/IdeaForge/2026-06-27 --session R2026-06-27-07-43-11
+ideaforge --reprocess --source ~/IdeaForge/2026-06-27 --llm-only   # stage-specific
+```
 
 **Check status** (pipeline, services, pending failures):
 

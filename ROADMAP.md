@@ -46,8 +46,13 @@ Prioritized work after **0.5.0**. Items are grouped by tier (impact vs effort) a
 
 ### 0.5.5 patch targets
 
-- [ ] **`ideaforge reprocess`** — Re-run pipeline for session dir or date range (Tier 2 carry-over).
-- [ ] **Menubar pending failures badge** — Show failure count in menu when `failures` log is non-empty.
+- [x] **`ideaforge --reprocess`** — Re-run pipeline for session dir or date range (`--from`/`--to`, `--session`).
+- [x] **Menubar pending failures badge** — Show failure count in menu and title when `failures` log is non-empty.
+
+### 0.6.0 targets (Tier 2)
+
+- [ ] **Recorder clock helper** — `ideaforge device clock` — read `recset.txt`, show skew vs system time.
+- [ ] **Config validation** — Fail fast on unknown keys / bad paths at daemon start.
 
 ---
 

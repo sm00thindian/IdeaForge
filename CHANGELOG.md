@@ -2,6 +2,13 @@
 
 All notable changes to IdeaForge are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.5] - 2026-06-30
+
+### Added
+
+- **`ideaforge --reprocess`** — Re-run pipeline on archived sessions (`--source` date folder or archive root with `--from`/`--to`; optional `--session` filter). Implies `--force`, no copy.
+- **Menubar failure badge** — Title shows `⚠N` and menu lists pending failed sessions when `.processed_log.json` has failures.
+
 ## [0.5.4] - 2026-06-30
 
 ### Added
@@ -73,6 +80,7 @@ All notable changes to IdeaForge are documented here. Format follows [Keep a Cha
 
 Prior releases were not changelogged in-repo. See git history for daemon, Grok/Claude/Ollama backends, faster-whisper + pyannote diarization, and USB ingest.
 
+[0.5.5]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.5.5
 [0.5.4]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.5.4
 [0.5.3]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.5.3
 [0.5.2]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.5.2

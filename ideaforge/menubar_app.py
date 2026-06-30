@@ -10,7 +10,9 @@ from pathlib import Path
 from typing import IO, List, Optional
 
 from ideaforge.branding import notification_icon_path
+from ideaforge.config import IdeaForgeConfig
 from ideaforge.health import DAEMON_LOG_PATH, open_daemon_log_tail
+from ideaforge.ingest import failed_session_stems, load_processed_log
 from ideaforge.status import (
     STATE_COMPLETE,
     STATE_ERROR,
@@ -30,6 +32,34 @@ from ideaforge.status import (
 )
 
 LOCK_PATH = Path.home() / "Library" / "Application Support" / "IdeaForge" / "menubar.lock"
+
+
+def _resolve_archive_path() -> Path:
+    cfg = IdeaForgeConfig()
+    config_path = cfg.default_config_path()
+    if config_path.is_file():
+        cfg = IdeaForgeConfig.from_toml(config_path)
+    return cfg.archive.expanduser()
+
+
+def _pending_failure_count(archive: Path) -> int:
+    try:
+        return len(failed_session_stems(load_processed_log(archive)))
+    except OSError:
+        return 0
+
+
+def _menu_title_with_failures(status: PipelineStatus, failure_count: int) -> str:
+    title = menu_bar_title(status)
+    if failure_count <= 0:
+        return title
+    if status.state in (STATE_PROCESSING, STATE_SETTLING):
+        return title
+    if title in ("IdeaForge", "✓ IdeaForge"):
+        return f"⚠{failure_count}"
+    if title == "⚠ IdeaForge" and status.state == STATE_ERROR:
+        return f"⚠{failure_count}"
+    return title
 
 
 def _open_path(path: Path) -> None:
@@ -111,7 +141,8 @@ class IdeaForgeMenuBarApp:
         self.detail_item = rumps.MenuItem("", callback=None)
         self.elapsed_item = rumps.MenuItem("", callback=None)
         self.pipeline_item = rumps.MenuItem("", callback=None)
-        self._archive_path = Path.home() / "IdeaForge"
+        self.failures_item = rumps.MenuItem("", callback=None)
+        self._archive_path = _resolve_archive_path()
         self._log_path = DAEMON_LOG_PATH
 
         self.app.menu = [
@@ -119,6 +150,7 @@ class IdeaForgeMenuBarApp:
             self.detail_item,
             self.elapsed_item,
             self.pipeline_item,
+            self.failures_item,
             None,
             rumps.MenuItem("Open Archive", callback=self.open_archive),
             rumps.MenuItem("Open Log", callback=self.open_log),
@@ -130,7 +162,8 @@ class IdeaForgeMenuBarApp:
 
     def refresh(self, _) -> None:
         status = load_status()
-        title = menu_bar_title(status)
+        failure_count = _pending_failure_count(self._archive_path)
+        title = _menu_title_with_failures(status, failure_count)
         # Title appears beside the icon on the same menu bar item.
         self.app.title = "" if title == "IdeaForge" else title
 
@@ -163,6 +196,14 @@ class IdeaForgeMenuBarApp:
             session_hint = f" · session {status.session}/{status.sessions_total}"
         self.elapsed_item.title = f"Elapsed {elapsed}{session_hint}"
         self.pipeline_item.title = _pipeline_summary(status)
+
+        if failure_count:
+            noun = "session" if failure_count == 1 else "sessions"
+            self.failures_item.title = (
+                f"⚠ {failure_count} failed {noun} — retry from archive"
+            )
+        else:
+            self.failures_item.title = "No pending failures"
 
     def open_archive(self, _) -> None:
         _open_path(self._archive_path)
