@@ -49,3 +49,22 @@ def test_concat_wav_files(tmp_path: Path):
     merged = concat_wav_files(paths, tmp_path / "merged.wav")
     assert merged.exists()
     assert get_audio_duration_seconds(merged) == 3.0
+
+
+def test_concat_wav_files_same_format_different_lengths(tmp_path: Path):
+    """Chunks from one session can differ in length but share format."""
+    paths = []
+    for duration in (2, 15):
+        path = tmp_path / f"chunk_{duration}s.wav"
+        rate = 16000
+        t = np.linspace(0, duration, rate * duration, endpoint=False)
+        audio = (0.25 * np.sin(2 * np.pi * 220 * t) * 32767).astype(np.int16)
+        with wave.open(str(path), "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(rate)
+            wf.writeframes(audio.tobytes())
+        paths.append(path)
+
+    merged = concat_wav_files(paths, tmp_path / "merged.wav")
+    assert get_audio_duration_seconds(merged) == 17.0

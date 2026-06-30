@@ -14,6 +14,7 @@ from ideaforge.device import RecorderDevice, find_recorder_mounts
 from ideaforge.pipeline import PipelineStages, resolve_stages
 from ideaforge.notify import notify_process_complete
 from ideaforge.runner import ProcessResult, process_source
+from ideaforge.status import StatusReporter
 
 
 @dataclass(frozen=True)
@@ -72,6 +73,7 @@ class RecorderWatcher:
         self._settled: Set[str] = set()
         self._last_snapshot: Dict[str, DeviceSnapshot] = {}
         self._running = True
+        self._status = StatusReporter()
 
     def stop(self) -> None:
         self._running = False
@@ -89,11 +91,13 @@ class RecorderWatcher:
         self._connected = current_mounts
 
         if not current:
+            self._status.set_watching()
             return None
 
         if len(current) > 1:
             names = ", ".join(Path(m).name for m in sorted(current))
             print(f"⚠️  Multiple recorders detected ({names}) — unplug extras")
+            self._status.set_idle(detail="Multiple recorders detected — unplug extras")
             return None
 
         device = next(iter(current.values()))
@@ -103,6 +107,10 @@ class RecorderWatcher:
             print(
                 f"📼 Recorder connected: {device.label} "
                 f"({device.recording_count} recording(s))"
+            )
+            self._status.set_settling(
+                device=device.label,
+                recording_count=device.recording_count,
             )
             if self.settle_seconds > 0:
                 print(f"   Waiting {self.settle_seconds:.0f}s for mount to settle...")
@@ -115,6 +123,8 @@ class RecorderWatcher:
 
         snap = snapshot_device(device)
         if self._last_snapshot.get(mount_key) == snap and not self.force:
+            print(f"   No new recordings on {device.label} — skipping")
+            self._status.set_watching(device=device.label)
             return None
 
         archive = self.cfg.archive.expanduser().resolve()
@@ -153,6 +163,7 @@ class RecorderWatcher:
                 "./scripts/install-daemon.sh, or add to .env"
             )
         print("   Press Ctrl+C to stop\n")
+        self._status.set_watching()
 
         while self._running:
             try:

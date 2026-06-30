@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 
@@ -30,6 +33,7 @@ from ideaforge.ingest import (
 from ideaforge.llm import process_transcript
 from ideaforge.notify import ProcessResult, RecordingResult
 from ideaforge.pipeline import PipelineStages, should_skip_group
+from ideaforge.status import StatusReporter, active_reporter, build_step_plan
 from ideaforge.transcribe import diarize_existing, transcribe_audio
 
 
@@ -78,10 +82,16 @@ def print_run_header(
     if cfg.merge_chunks and session_count < audio_count:
         print(
             f"   Found {audio_count} audio file(s) in {session_count} session(s) "
-            f"(merging chunks ≤ {cfg.chunk_gap_seconds:.0f}s apart)"
+            f"(merging auto-split chunks ≤ {cfg.chunk_gap_seconds:.0f}s apart, "
+            f"≥ {cfg.merge_min_chunk_seconds:.0f}s long)"
         )
     else:
         print(f"   Found {audio_count} audio file(s)")
+    if cfg.max_parallel_sessions > 1 and session_count > 1:
+        print(
+            f"   Parallel: up to {cfg.max_parallel_sessions} session(s) "
+            "(GPU stages serialized, LLM may overlap)"
+        )
     if cfg.speaker_map:
         print(
             f"   Speakers: {len(cfg.speaker_map)} manual override(s) "
@@ -141,13 +151,96 @@ def _process_group(
     force: bool,
     delete_from_device: bool,
     export_settings=None,
+    session_index: int = 1,
+    sessions_total: int = 1,
+    log_lock: Optional[threading.Lock] = None,
 ) -> tuple[int, int, RecordingResult]:
     """Process one recording session. Returns (processed, skipped, brief)."""
-    file_hashes = _hash_group_files(group)
-    date_folder = archive_folder_for_file(group.files[0], archive)
-    work_folder = date_folder if stages.copy else group.files[0].parent
-    session_stem = group.session_stem
-    paths = _output_paths(work_folder, session_stem)
+    work_folder = (
+        archive_folder_for_file(group.files[0], archive)
+        if stages.copy
+        else group.files[0].parent
+    )
+    reporter = active_reporter()
+    session_tracker = (
+        reporter.track_session() if reporter is not None else nullcontext()
+    )
+    with session_tracker:
+        return _process_group_body(
+            group,
+            archive,
+            cfg,
+            stages,
+            processed_log,
+            force=force,
+            delete_from_device=delete_from_device,
+            export_settings=export_settings,
+            session_index=session_index,
+            sessions_total=sessions_total,
+            log_lock=log_lock,
+            reporter=reporter,
+            file_hashes=_hash_group_files(group),
+            work_folder=work_folder,
+            session_stem=group.session_stem,
+            paths=_output_paths(work_folder, group.session_stem),
+        )
+
+
+def _record_processed_locked(
+    processed_log: dict,
+    *,
+    log_lock: Optional[threading.Lock],
+    source_file: Path,
+    archive_path: Path,
+    archive_file: Optional[Path] = None,
+    file_hash: Optional[str] = None,
+) -> None:
+    if log_lock is None:
+        record_processed(
+            processed_log,
+            source_file,
+            archive_path,
+            archive_file=archive_file,
+            file_hash=file_hash,
+        )
+        return
+    with log_lock:
+        record_processed(
+            processed_log,
+            source_file,
+            archive_path,
+            archive_file=archive_file,
+            file_hash=file_hash,
+        )
+
+
+def _process_group_body(
+    group: RecordingGroup,
+    archive: Path,
+    cfg: IdeaForgeConfig,
+    stages: PipelineStages,
+    processed_log: dict,
+    *,
+    force: bool,
+    delete_from_device: bool,
+    export_settings,
+    session_index: int,
+    sessions_total: int,
+    log_lock: Optional[threading.Lock],
+    reporter: Optional[StatusReporter],
+    file_hashes: Dict[Path, str],
+    work_folder: Path,
+    session_stem: str,
+    paths: dict,
+) -> tuple[int, int, RecordingResult]:
+    if reporter is not None:
+        reporter.begin_session(
+            session_index,
+            label=group.label,
+            recording_stem=session_stem,
+            step_plan=build_step_plan(stages),
+        )
+
     processed_hashes = processed_log.get("hashes", [])
 
     if should_skip_group(
@@ -174,11 +267,21 @@ def _process_group(
 
     if stages.copy:
         print(f"\n📼 {group.label} → {work_folder.name}/")
-        for audio_file in group.files:
+        if reporter is not None:
+            reporter.set_step_active("copy", detail=f"0/{len(group.files)} files")
+        for index, audio_file in enumerate(group.files, start=1):
             copied = copy_file_safely(audio_file, work_folder)
             copied_paths.append(copied)
             archive_copies[audio_file] = copied
+            if reporter is not None:
+                reporter.touch(
+                    stage="Copying",
+                    progress=index / len(group.files),
+                    detail=f"{index}/{len(group.files)} files copied",
+                )
         print("   📥 Copied to archive")
+        if reporter is not None:
+            reporter.mark_step_done("copy")
     else:
         print(f"\n📼 {group.label} (in-place)")
         copied_paths = list(group.files)
@@ -186,15 +289,26 @@ def _process_group(
             archive_copies[audio_file] = audio_file
 
     if len(copied_paths) > 1:
+        if reporter is not None:
+            reporter.set_step_active(
+                "merge",
+                detail=f"Joining {len(copied_paths)} chunks",
+            )
         merged_name = f"{session_stem}_merged{copied_paths[0].suffix}"
         process_path = concat_wav_files(copied_paths, work_folder / merged_name)
         print(f"   🔗 Merged {len(copied_paths)} chunks → {process_path.name}")
+        if reporter is not None:
+            reporter.mark_step_done("merge")
     else:
         process_path = copied_paths[0]
+        if reporter is not None and stages.transcribe:
+            reporter.skip_step("merge")
 
     transcript_path = paths["transcript"]
 
     if stages.transcribe:
+        if reporter is not None:
+            reporter.set_step_active("transcribe", detail=process_path.name)
         transcript_path = transcribe_audio(
             process_path,
             work_folder,
@@ -212,7 +326,11 @@ def _process_group(
             force=force,
             output_stem=session_stem,
         )
+        if reporter is not None:
+            reporter.mark_step_done("transcribe")
     elif stages.diarize:
+        if reporter is not None:
+            reporter.set_step_active("diarize", detail=process_path.name)
         transcript_path = diarize_existing(
             process_path,
             work_folder,
@@ -223,6 +341,8 @@ def _process_group(
             force=force,
             output_stem=session_stem,
         )
+        if reporter is not None:
+            reporter.mark_step_done("diarize")
     elif stages.llm:
         if not transcript_path.exists():
             print(f"    ❌ Missing transcript: {transcript_path.name}")
@@ -231,6 +351,8 @@ def _process_group(
         print("    📄 Using existing transcript")
 
     if stages.llm and transcript_path and transcript_path.exists():
+        if reporter is not None:
+            reporter.set_step_active("summarize", detail=transcript_path.stem)
         process_transcript(
             transcript_path,
             work_folder,
@@ -244,13 +366,16 @@ def _process_group(
             archive=archive,
             export_settings=export_settings,
         )
+        if reporter is not None:
+            reporter.mark_step_done("summarize")
 
     if stages.copy or stages.transcribe:
         for audio_file, file_hash in file_hashes.items():
-            record_processed(
+            _record_processed_locked(
                 processed_log,
-                audio_file,
-                work_folder,
+                log_lock=log_lock,
+                source_file=audio_file,
+                archive_path=work_folder,
                 archive_file=archive_copies.get(audio_file),
                 file_hash=file_hash,
             )
@@ -282,6 +407,7 @@ def process_source(
         audio_files,
         enabled=cfg.merge_chunks,
         chunk_gap_seconds=cfg.chunk_gap_seconds,
+        merge_min_chunk_seconds=cfg.merge_min_chunk_seconds,
     )
 
     if show_header:
@@ -298,33 +424,82 @@ def process_source(
         print("    ℹ️  No audio files to process")
         return ProcessResult()
 
+    device_label = source.name
+    reporter = StatusReporter()
     processed_log = load_processed_log(archive)
     result = ProcessResult()
-    iterator = tqdm(groups, desc="Processing") if show_progress and tqdm else groups
+    workers = min(cfg.max_parallel_sessions, len(groups))
+    log_lock = threading.Lock() if workers > 1 else None
 
-    for group in iterator:
-        try:
-            processed, skipped, brief = _process_group(
-                group,
-                archive,
-                cfg,
-                stages,
-                processed_log,
-                force=force,
-                delete_from_device=delete_from_device,
-                export_settings=export_settings,
+    def _run_session(
+        session_index: int,
+        group: RecordingGroup,
+    ) -> tuple[int, int, RecordingResult]:
+        return _process_group(
+            group,
+            archive,
+            cfg,
+            stages,
+            processed_log,
+            force=force,
+            delete_from_device=delete_from_device,
+            export_settings=export_settings,
+            session_index=session_index,
+            sessions_total=len(groups),
+            log_lock=log_lock,
+        )
+
+    with reporter.activate():
+        reporter.begin_run(
+            device=device_label,
+            sessions_total=len(groups),
+            pipeline=stages.label,
+        )
+        if workers <= 1:
+            iterator = (
+                tqdm(groups, desc="Processing") if show_progress and tqdm else groups
             )
-        except OSError as exc:
-            print(f"\n⚠️  Cannot process {group.label} — {exc}")
-            continue
-        except ValueError as exc:
-            print(f"\n⚠️  Cannot merge {group.label} — {exc}")
-            continue
+            for session_index, group in enumerate(iterator, start=1):
+                try:
+                    processed, skipped, brief = _run_session(session_index, group)
+                except OSError as exc:
+                    print(f"\n⚠️  Cannot process {group.label} — {exc}")
+                    reporter.set_error(str(exc))
+                    continue
+                except ValueError as exc:
+                    print(f"\n⚠️  Cannot merge {group.label} — {exc}")
+                    reporter.set_error(str(exc))
+                    continue
+                result.files_processed += processed
+                result.files_skipped += skipped
+                result.recordings.append(brief)
+        else:
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = {
+                    executor.submit(_run_session, index, group): group
+                    for index, group in enumerate(groups, start=1)
+                }
+                for future in as_completed(futures):
+                    group = futures[future]
+                    try:
+                        processed, skipped, brief = future.result()
+                    except OSError as exc:
+                        print(f"\n⚠️  Cannot process {group.label} — {exc}")
+                        reporter.set_error(str(exc))
+                        continue
+                    except ValueError as exc:
+                        print(f"\n⚠️  Cannot merge {group.label} — {exc}")
+                        reporter.set_error(str(exc))
+                        continue
+                    result.files_processed += processed
+                    result.files_skipped += skipped
+                    result.recordings.append(brief)
 
-        result.files_processed += processed
-        result.files_skipped += skipped
-        result.recordings.append(brief)
+        save_processed_log(archive, processed_log)
+        reporter.complete_run(
+            processed=result.files_processed,
+            skipped=result.files_skipped,
+        )
 
-    save_processed_log(archive, processed_log)
     print(f"\n✅ IdeaForge complete — {result.files_processed} session(s) processed")
     return result

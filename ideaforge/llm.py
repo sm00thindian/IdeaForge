@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 from ideaforge.config import has_anthropic_api_key, has_xai_api_key
 from ideaforge.export import ExportSettings, export_action_items
 from ideaforge.prompts import Mode, build_prompt
+from ideaforge.status import status_touch
 from ideaforge.schema import (
     ActionItem,
     CreativeOutput,
@@ -73,6 +74,11 @@ def process_transcript(
         return None
 
     resolved_backend = _resolve_backend(backend)
+    status_touch(
+        stage="Summarizing",
+        clear_progress=True,
+        detail=f"{resolved_backend} · {transcript_path.stem}",
+    )
     system_prompt, user_prompt = build_prompt(mode, transcript)
 
     models = {

@@ -24,6 +24,8 @@ diarize = false
 min_file_size_bytes = 50000
 merge_chunks = true          # join consecutive recorder splits (e.g. 15 min max)
 chunk_gap_seconds = 30       # max gap between chunk end and next start
+merge_min_chunk_seconds = 600  # prior chunk must be this long to merge (filters short clips)
+max_parallel_sessions = 2      # 1 = sequential; 2+ pipelines sessions (GPU serialized, LLM overlaps)
 
 [diarization]
 # Hugging Face token for pyannote models (or set HF_TOKEN env var)
@@ -41,6 +43,10 @@ poll_interval_seconds = 5   # how often to check /Volumes
 settle_seconds = 5          # wait after mount before processing
 delete_after_copy = true    # remove recordings from device after verified local copy
 notify = true               # macOS notification when pipeline finishes
+
+# Menu bar progress UI (optional):
+#   ./scripts/install-menubar.sh
+# Reads ~/Library/Application Support/IdeaForge/status.json
 
 [export]
 # Off by default — enable what you use (opt-in)

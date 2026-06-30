@@ -82,18 +82,40 @@ def _chunk_from_path(path: Path) -> RecordingChunk:
     return RecordingChunk(path=path, start=start, duration_seconds=duration_seconds)
 
 
+def chunks_are_continuation(
+    previous: RecordingChunk,
+    next_chunk: RecordingChunk,
+    *,
+    chunk_gap_seconds: float,
+    merge_min_chunk_seconds: float,
+) -> bool:
+    """
+    Return True when ``next_chunk`` likely continues the same session as ``previous``.
+
+    Recorders auto-split long sessions at a fixed max length (e.g. 15 minutes).
+    A short prior clip that ends within ``chunk_gap_seconds`` of the next file is
+    usually a separate, intentionally stopped recording — not a split segment.
+    """
+    gap = (next_chunk.start - previous.end).total_seconds()
+    if gap < 0 or gap > chunk_gap_seconds:
+        return False
+    return previous.duration_seconds >= merge_min_chunk_seconds
+
+
 def group_recordings(
     files: Sequence[Path],
     *,
     enabled: bool = True,
     chunk_gap_seconds: float = 30.0,
+    merge_min_chunk_seconds: float = 600.0,
 ) -> List[RecordingGroup]:
     """
     Group consecutive recorder chunks into one session.
 
     Chunks belong to the same session when the gap between the end of one file
-    and the start of the next is within ``chunk_gap_seconds`` (recorders often
-    split long recordings at a fixed max length, e.g. 15 minutes).
+    and the start of the next is within ``chunk_gap_seconds`` *and* the previous
+    chunk is at least ``merge_min_chunk_seconds`` long (indicating a recorder
+    auto-split rather than a short, standalone clip).
     """
     if not files:
         return []
@@ -119,8 +141,12 @@ def group_recordings(
             current = [chunk]
             continue
 
-        gap = (chunk.start - current[-1].end).total_seconds()
-        if 0 <= gap <= chunk_gap_seconds:
+        if chunks_are_continuation(
+            current[-1],
+            chunk,
+            chunk_gap_seconds=chunk_gap_seconds,
+            merge_min_chunk_seconds=merge_min_chunk_seconds,
+        ):
             current.append(chunk)
         else:
             groups.append(RecordingGroup(tuple(current)))

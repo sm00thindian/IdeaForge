@@ -18,6 +18,14 @@ def test_compute_file_hash_stable(tmp_path):
     assert compute_file_hash(f) == compute_file_hash(f)
 
 
+def test_get_audio_files_excludes_merged_artifacts(tmp_path):
+    (tmp_path / "R2026-06-29-21-10-52.WAV").write_bytes(b"\x00" * 60_000)
+    (tmp_path / "R2026-06-29-21-10-52_merged.WAV").write_bytes(b"\x00" * 60_000)
+
+    files = get_audio_files(tmp_path, {".wav"}, min_size_bytes=50_000)
+    assert [f.name for f in files] == ["R2026-06-29-21-10-52.WAV"]
+
+
 def test_get_audio_files_filters_small(tmp_path):
     big = tmp_path / "big.wav"
     big.write_bytes(b"\x00" * 60_000)

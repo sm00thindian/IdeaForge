@@ -102,6 +102,8 @@ class IdeaForgeConfig:
     min_file_size_bytes: int = 50_000
     merge_chunks: bool = True
     chunk_gap_seconds: float = 30.0
+    merge_min_chunk_seconds: float = 600.0
+    max_parallel_sessions: int = 1
     hf_token: Optional[str] = None
     audio_extensions: List[str] = field(
         default_factory=lambda: [".wav", ".mp3", ".m4a", ".aac", ".ogg", ".flac", ".wma", ".opus"]
@@ -145,6 +147,10 @@ class IdeaForgeConfig:
                 cfg.merge_chunks = bool(p["merge_chunks"])
             if "chunk_gap_seconds" in p:
                 cfg.chunk_gap_seconds = float(p["chunk_gap_seconds"])
+            if "merge_min_chunk_seconds" in p:
+                cfg.merge_min_chunk_seconds = float(p["merge_min_chunk_seconds"])
+            if "max_parallel_sessions" in p:
+                cfg.max_parallel_sessions = max(1, int(p["max_parallel_sessions"]))
         if "diarization" in data:
             d = data["diarization"]
             cfg.hf_token = d.get("hf_token")

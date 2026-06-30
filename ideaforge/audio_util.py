@@ -70,6 +70,18 @@ def _gcd(a: int, b: int) -> int:
     return a
 
 
+def _wav_format_key(path: Path) -> tuple[int, int, int, str, str]:
+    """Format identity for concat — excludes nframes (length differs per chunk)."""
+    with wave.open(str(path), "rb") as wf:
+        return (
+            wf.getnchannels(),
+            wf.getsampwidth(),
+            wf.getframerate(),
+            wf.getcomptype(),
+            wf.getcompname(),
+        )
+
+
 def concat_wav_files(paths: Sequence[Path], output: Path) -> Path:
     """Concatenate PCM WAV files with identical format. Returns output path."""
     if not paths:
@@ -77,21 +89,24 @@ def concat_wav_files(paths: Sequence[Path], output: Path) -> Path:
     if len(paths) == 1:
         return paths[0]
 
-    with wave.open(str(paths[0]), "rb") as first:
-        params = first.getparams()
+    ref_format = _wav_format_key(paths[0])
 
     frames: list[bytes] = []
     for path in paths:
+        if _wav_format_key(path) != ref_format:
+            raise ValueError(
+                f"WAV format mismatch: {paths[0].name} vs {path.name}"
+            )
         with wave.open(str(path), "rb") as wf:
-            if wf.getparams() != params:
-                raise ValueError(
-                    f"WAV format mismatch: {paths[0].name} vs {path.name}"
-                )
             frames.append(wf.readframes(wf.getnframes()))
 
+    nchannels, sampwidth, framerate, comptype, compname = ref_format
     output.parent.mkdir(parents=True, exist_ok=True)
     with wave.open(str(output), "wb") as out:
-        out.setparams(params)
+        out.setnchannels(nchannels)
+        out.setsampwidth(sampwidth)
+        out.setframerate(framerate)
+        out.setcomptype(comptype, compname)
         for chunk in frames:
             out.writeframes(chunk)
     return output

@@ -63,7 +63,7 @@ def test_tick_runs_pipeline_on_new_device(tmp_path: Path, monkeypatch):
     process_fn.assert_called_once()
 
 
-def test_tick_skips_when_snapshot_unchanged(tmp_path: Path, monkeypatch):
+def test_tick_skips_when_snapshot_unchanged(tmp_path: Path, monkeypatch, capsys):
     device = _device(tmp_path)
     process_fn = MagicMock(return_value=ProcessResult(files_processed=1))
     watcher = _watcher(process_fn=process_fn)
@@ -78,6 +78,7 @@ def test_tick_skips_when_snapshot_unchanged(tmp_path: Path, monkeypatch):
     result = watcher.tick()
     assert result is None
     process_fn.assert_not_called()
+    assert "No new recordings" in capsys.readouterr().out
 
 
 def test_tick_runs_when_new_recording_added(tmp_path: Path, monkeypatch):

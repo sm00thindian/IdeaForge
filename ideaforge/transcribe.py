@@ -7,9 +7,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from ideaforge.audio_util import get_audio_duration_seconds
 from ideaforge.backends import resolve_whisper_backend, transcribe_with_backend
+from ideaforge.gpu_lock import gpu_stage
 from ideaforge.diarize import assign_speakers, diarize_audio, load_cached_turns, save_turns_cache
 from ideaforge.speakers import format_diarized_transcript, rename_segments
+from ideaforge.status import active_reporter, status_touch
 from ideaforge.transcription_types import TranscriptSegment, TranscriptionResult
 
 
@@ -72,32 +75,52 @@ def transcribe_audio(
             return transcript_path
 
     print(f"    🎙️  Transcribing {audio_path.name} ...")
-
-    backend = resolve_whisper_backend(whisper_backend)
-    result = transcribe_with_backend(
-        audio_path,
-        backend=backend,
-        model_size=whisper_model,
-        device=whisper_device,
-        compute_type=whisper_compute_type,
-        beam_size=beam_size,
-        language=language,
+    duration_hint = ""
+    try:
+        duration_seconds = get_audio_duration_seconds(audio_path)
+        duration_hint = f"{int(duration_seconds // 60)} min audio"
+    except OSError:
+        duration_seconds = None
+    status_touch(
+        stage="Transcribing",
+        clear_progress=True,
+        detail=duration_hint or audio_path.name,
     )
 
-    _save_segments(paths["segments"], result.segments)
-
-    if diarize:
-        result.segments = _apply_diarization(
+    backend = resolve_whisper_backend(whisper_backend)
+    with gpu_stage():
+        result = transcribe_with_backend(
             audio_path,
-            result.segments,
-            output_dir,
-            hf_token=hf_token,
-            min_speakers=min_speakers,
-            max_speakers=max_speakers,
-            speaker_map=speaker_map,
-            force=force,
-            output_stem=stem,
+            backend=backend,
+            model_size=whisper_model,
+            device=whisper_device,
+            compute_type=whisper_compute_type,
+            beam_size=beam_size,
+            language=language,
+            on_progress=lambda progress, detail: status_touch(
+                stage="Transcribing",
+                progress=progress,
+                detail=detail,
+            ),
         )
+
+        _save_segments(paths["segments"], result.segments)
+
+        if diarize:
+            reporter = active_reporter()
+            if reporter is not None:
+                reporter.mark_step_done("transcribe")
+            result.segments = _apply_diarization(
+                audio_path,
+                result.segments,
+                output_dir,
+                hf_token=hf_token,
+                min_speakers=min_speakers,
+                max_speakers=max_speakers,
+                speaker_map=speaker_map,
+                force=force,
+                output_stem=stem,
+            )
 
     mapping = speaker_map or {}
     diarized = any(seg.speaker for seg in result.segments)
@@ -158,17 +181,18 @@ def diarize_existing(
         return transcript_path
 
     print(f"    🗣️  Diarizing {audio_path.name} (cached segments) ...")
-    labeled = _apply_diarization(
-        audio_path,
-        segments,
-        output_dir,
-        hf_token=hf_token,
-        min_speakers=min_speakers,
-        max_speakers=max_speakers,
-        speaker_map=speaker_map,
-        force=force,
-        output_stem=stem,
-    )
+    with gpu_stage():
+        labeled = _apply_diarization(
+            audio_path,
+            segments,
+            output_dir,
+            hf_token=hf_token,
+            min_speakers=min_speakers,
+            max_speakers=max_speakers,
+            speaker_map=speaker_map,
+            force=force,
+            output_stem=stem,
+        )
 
     mapping = speaker_map or {}
     transcript_text = format_diarized_transcript(labeled, mapping)
@@ -223,4 +247,7 @@ def _apply_diarization(
         encoding="utf-8",
     )
     print(f"    ✓ Speaker labels assigned ({len(labeled)} segments)")
+    reporter = active_reporter()
+    if reporter is not None:
+        reporter.mark_step_done("diarize")
     return labeled

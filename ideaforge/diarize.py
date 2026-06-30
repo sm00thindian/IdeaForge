@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ideaforge.audio_util import TARGET_SAMPLE_RATE, load_audio_mono_16k
+from ideaforge.status import active_reporter, status_touch
 from ideaforge.transcription_types import SpeakerTurn, TranscriptSegment
 
 PIPELINE_MODELS = (
@@ -123,6 +124,13 @@ def diarize_audio(
         return None
 
     try:
+        import warnings
+
+        warnings.filterwarnings(
+            "ignore",
+            message="torchcodec is not installed correctly",
+            category=UserWarning,
+        )
         from pyannote.audio import Pipeline  # type: ignore  # noqa: F401
     except ImportError:
         print("    ⚠️  pyannote.audio not installed (pip install 'ideaforge[diarize]')")
@@ -133,6 +141,14 @@ def diarize_audio(
         if min_speakers or max_speakers:
             hint = f" (min={min_speakers or '—'}, max={max_speakers or '—'})"
         print(f"    🗣️  Running pyannote speaker diarization{hint} ...")
+        status_touch(
+            stage="Diarizing",
+            clear_progress=True,
+            detail=f"Analyzing {audio_path.name}",
+        )
+        reporter = active_reporter()
+        if reporter is not None:
+            reporter.set_step_active("diarize", detail=audio_path.name)
         pipeline = _load_pipeline(hf_token)
 
         audio_np, _ = load_audio_mono_16k(audio_path)

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import platform
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from ideaforge.audio_util import get_audio_duration_seconds, load_audio_mono_16k
 from ideaforge.transcription_types import TranscriptSegment, TranscriptionResult
@@ -56,11 +56,23 @@ def transcribe_with_backend(
     compute_type: str = "int8",
     beam_size: int = 1,
     language: Optional[str] = None,
+    on_progress: Optional[Callable[[float, str], None]] = None,
 ) -> TranscriptionResult:
     if backend == "mlx":
-        return _transcribe_mlx(audio_path, model_size, language=language)
+        return _transcribe_mlx(
+            audio_path,
+            model_size,
+            language=language,
+            on_progress=on_progress,
+        )
     return _transcribe_faster(
-        audio_path, model_size, device, compute_type, beam_size, language=language
+        audio_path,
+        model_size,
+        device,
+        compute_type,
+        beam_size,
+        language=language,
+        on_progress=on_progress,
     )
 
 
@@ -69,6 +81,7 @@ def _transcribe_mlx(
     model_size: str,
     *,
     language: Optional[str] = None,
+    on_progress: Optional[Callable[[float, str], None]] = None,
 ) -> TranscriptionResult:
     import mlx_whisper  # type: ignore
 
@@ -77,6 +90,9 @@ def _transcribe_mlx(
     print(f"    ⚡ mlx-whisper ({model_size}) on Apple Silicon{lang_hint}")
 
     audio, duration = load_audio_mono_16k(audio_path)
+    if on_progress is not None:
+        minutes = max(int(duration // 60), 1)
+        on_progress(0.0, f"Transcribing ~{minutes} min audio")
     decode_options = {"language": language} if language else {}
     result = mlx_whisper.transcribe(
         audio,
@@ -87,6 +103,8 @@ def _transcribe_mlx(
     )
 
     segments = _segments_from_mlx(result.get("segments", []))
+    if on_progress is not None:
+        on_progress(1.0, "Transcription complete")
     return TranscriptionResult(
         segments=segments,
         language=result.get("language"),
@@ -104,6 +122,7 @@ def _transcribe_faster(
     beam_size: int,
     *,
     language: Optional[str] = None,
+    on_progress: Optional[Callable[[float, str], None]] = None,
 ) -> TranscriptionResult:
     from faster_whisper import WhisperModel  # type: ignore
 
@@ -118,20 +137,33 @@ def _transcribe_faster(
         vad_parameters={"min_silence_duration_ms": 500},
     )
 
-    segments = [
-        TranscriptSegment(
-            start=float(seg.start),
-            end=float(seg.end),
-            text=seg.text.strip(),
+    segments: List[TranscriptSegment] = []
+    total_duration = float(info.duration or 0.0) or get_audio_duration_seconds(audio_path)
+    last_progress = -1.0
+    for seg in raw_segments:
+        text = seg.text.strip()
+        if not text:
+            continue
+        segments.append(
+            TranscriptSegment(
+                start=float(seg.start),
+                end=float(seg.end),
+                text=text,
+            )
         )
-        for seg in raw_segments
-        if seg.text.strip()
-    ]
+        if on_progress is not None and total_duration > 0:
+            progress = min(float(seg.end) / total_duration, 1.0)
+            if progress - last_progress >= 0.02 or progress >= 1.0:
+                last_progress = progress
+                on_progress(progress, f"Transcribing · {int(progress * 100)}%")
+
+    if on_progress is not None:
+        on_progress(1.0, "Transcription complete")
 
     return TranscriptionResult(
         segments=segments,
         language=info.language,
-        duration_seconds=info.duration,
+        duration_seconds=total_duration,
         backend="faster-whisper",
         model=model_size,
     )

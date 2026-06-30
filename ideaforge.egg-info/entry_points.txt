@@ -1,2 +1,3 @@
 [console_scripts]
 ideaforge = ideaforge.cli:main
+ideaforge-menubar = ideaforge.menubar_app:main

@@ -29,12 +29,17 @@ def test_process_source_merges_chunks_before_transcribe(tmp_path: Path):
     source.mkdir(parents=True)
 
     base = datetime(2025, 7, 7, 17, 0, 0)
-    for offset_seconds in (0, 60):
+    for offset_seconds in (0, 15 * 60 + 5):
         stamp = base + timedelta(seconds=offset_seconds)
         name = stamp.strftime("R%Y-%m-%d-%H-%M-%S.WAV")
-        _write_wav(source / name, duration_seconds=60)
+        _write_wav(source / name, duration_seconds=15 * 60)
 
-    cfg = IdeaForgeConfig(archive=archive, merge_chunks=True, chunk_gap_seconds=30)
+    cfg = IdeaForgeConfig(
+        archive=archive,
+        merge_chunks=True,
+        chunk_gap_seconds=30,
+        merge_min_chunk_seconds=600,
+    )
     stages = PipelineStages(copy=True, transcribe=True, diarize=False, llm=False)
 
     with patch("ideaforge.runner.transcribe_audio") as transcribe:

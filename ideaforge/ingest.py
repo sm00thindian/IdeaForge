@@ -18,6 +18,11 @@ def compute_file_hash(file_path: Path, block_size: int = 65536) -> str:
     return sha256.hexdigest()
 
 
+def is_derived_audio(path: Path) -> bool:
+    """True for pipeline-generated audio (e.g. merged chunks), not source recordings."""
+    return path.stem.endswith("_merged")
+
+
 def get_audio_files(
     source: Path,
     extensions: Set[str],
@@ -27,7 +32,13 @@ def get_audio_files(
     normalized = {ext.lower() for ext in extensions} | {ext.upper() for ext in extensions}
     for ext in normalized:
         files.extend(source.rglob(f"*{ext}"))
-    valid = [f for f in files if f.is_file() and f.stat().st_size >= min_size_bytes]
+    valid = [
+        f
+        for f in files
+        if f.is_file()
+        and f.stat().st_size >= min_size_bytes
+        and not is_derived_audio(f)
+    ]
     return sorted(valid, key=lambda p: p.stat().st_mtime)
 
 
