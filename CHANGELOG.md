@@ -143,6 +143,11 @@ All notable changes to IdeaForge are documented here. Format follows [Keep a Cha
 
 Prior releases were not changelogged in-repo. See git history for daemon, Grok/Claude/Ollama backends, faster-whisper + pyannote diarization, and USB ingest.
 
+[0.8.0]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.8.0
+[0.7.1]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.7.1
+[0.7.0]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.7.0
+[0.6.2]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.6.2
+[0.6.1]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.6.1
 [0.6.0]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.6.0
 [0.5.5]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.5.5
 [0.5.4]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.5.4
