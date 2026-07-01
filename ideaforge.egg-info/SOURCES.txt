@@ -100,6 +100,7 @@ tests/test_runner_purge.py
 tests/test_save_grok_session.py
 tests/test_schema.py
 tests/test_session_failures.py
+tests/test_session_pool_context.py
 tests/test_session_time.py
 tests/test_speaker_library.py
 tests/test_speaker_register.py

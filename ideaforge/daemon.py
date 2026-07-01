@@ -115,9 +115,11 @@ def run_device_ingest(
     delete_after_copy: Optional[bool] = None,
     unmount_after: Optional[bool] = None,
     reporter: Optional[StatusReporter] = None,
+    sync_clock: bool = True,
 ) -> IngestResult:
     """Copy device recordings to archive, verify, optionally purge and unmount."""
-    _maybe_sync_device_clock(source, cfg, reporter)
+    if sync_clock:
+        _maybe_sync_device_clock(source, cfg, reporter)
 
     delete = (
         cfg.daemon_delete_after_copy
@@ -157,7 +159,13 @@ def daemon_process_device(
     Daemon pipeline: ingest device files locally first (copy → verify → purge),
     optionally unmount, then transcribe/diarize/summarize from archive only.
     """
-    ingest = run_device_ingest(source, archive, cfg, reporter=reporter)
+    ingest = run_device_ingest(
+        source,
+        archive,
+        cfg,
+        reporter=reporter,
+        sync_clock=False,
+    )
 
     processed_log = load_processed_log(archive)
     has_failures = bool(processed_log.get("failures"))
@@ -268,6 +276,12 @@ class RecorderWatcher:
             if refreshed_device is not None:
                 device = refreshed_device
                 mount_key = str(device.mount_path)
+            if self.cfg.daemon_sync_device_clock:
+                _maybe_sync_device_clock(
+                    device.mount_path,
+                    self.cfg,
+                    reporter=self._status,
+                )
             self._settled.add(mount_key)
 
         snap = snapshot_device(device)

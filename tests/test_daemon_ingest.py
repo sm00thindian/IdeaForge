@@ -123,6 +123,22 @@ def test_daemon_process_device_passes_reporter_to_process_source(tmp_path: Path)
     assert process.call_args.kwargs["device_label"] == device.mount_path.name
 
 
+def test_daemon_process_device_skips_clock_sync_during_ingest(tmp_path: Path):
+    device = _device(tmp_path)
+    archive = tmp_path / "IdeaForge"
+    cfg = IdeaForgeConfig(archive=archive)
+    stages = PipelineStages(copy=True, transcribe=True, diarize=False, llm=False)
+    ingest = IngestResult()
+
+    with (
+        patch("ideaforge.daemon.run_device_ingest", return_value=ingest) as run_ingest,
+        patch("ideaforge.daemon.load_processed_log", return_value={"failures": {}}),
+    ):
+        daemon_process_device(device.mount_path, archive, cfg, stages)
+
+    assert run_ingest.call_args.kwargs.get("sync_clock") is False
+
+
 def test_watcher_uses_daemon_process_fn_by_default():
     watcher = RecorderWatcher(
         cfg=IdeaForgeConfig(),

@@ -155,6 +155,10 @@ class IngestResult:
         return bool(self.archive_files)
 
     @property
+    def has_new_copies(self) -> bool:
+        return self.files_copied > 0
+
+    @property
     def device_cleared(self) -> bool:
         return self.files_failed == 0
 
@@ -195,12 +199,22 @@ def ingest_device_recordings(
 
     device_clock: Optional[datetime] = None
     if device is not None and device.profile is not None:
-        device_clock = device.profile.read_device_clock(source)
+        clock_info = device.profile.read_device_clock(source)
+        if clock_info is not None:
+            device_clock = clock_info.device_time
 
     processed_log = load_processed_log(archive)
     total = len(device_files)
 
-    print(f"\n📥 Ingesting {total} recording(s) from device → archive")
+    pending_copy = sum(
+        1
+        for audio_file in device_files
+        if find_archive_copy(audio_file, archive, processed_log) is None
+    )
+    if pending_copy:
+        print(f"\n📥 Ingesting {pending_copy} new recording(s) from device → archive")
+    else:
+        print(f"\n📥 Verifying {total} recording(s) already in archive")
     if reporter is not None:
         reporter.enter_processing(
             device=source.name,
