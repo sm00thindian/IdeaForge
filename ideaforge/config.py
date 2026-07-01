@@ -20,6 +20,22 @@ except ImportError:
     tomllib = None  # type: ignore
 
 
+def loads_toml(text: str) -> Dict[str, Any]:
+    """Parse TOML text on Python 3.10 (tomli) and 3.11+ (tomllib)."""
+    if tomllib is not None:
+        return tomllib.loads(text)
+    try:
+        import tomli
+    except ImportError as exc:
+        raise RuntimeError(
+            "TOML parser unavailable — install tomli (Python 3.10) or use Python 3.11+"
+        ) from exc
+    try:
+        return tomli.loads(text)
+    except TypeError:
+        return tomli.loads(text.encode("utf-8"))
+
+
 def find_dotenv() -> Optional[Path]:
     """Locate .env in cwd or repository root."""
     for candidate in (Path.cwd() / ".env", _PACKAGE_ROOT / ".env"):
@@ -146,9 +162,9 @@ class IdeaForgeConfig:
     @classmethod
     def from_toml(cls, path: Path) -> "IdeaForgeConfig":
         cfg = cls()
-        if not path.exists() or tomllib is None:
+        if not path.exists():
             return cfg
-        data = tomllib.loads(path.read_text(encoding="utf-8"))
+        data = loads_toml(path.read_text(encoding="utf-8"))
         return cls._merge(cfg, data)
 
     @classmethod

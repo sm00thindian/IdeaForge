@@ -5,12 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Set
 
-try:
-    import tomllib  # Python 3.11+
-except ImportError:
-    tomllib = None  # type: ignore
-
-from ideaforge.config import IdeaForgeConfig
+from ideaforge.config import IdeaForgeConfig, loads_toml
 
 TOP_LEVEL_KEYS: Set[str] = {
     "archive",
@@ -236,12 +231,13 @@ def validate_config(
 
 def validate_config_file(path: Path, *, check_paths: bool = True) -> IdeaForgeConfig:
     """Load and validate config.toml; raise ConfigValidationError on failure."""
-    if tomllib is None:
-        raise ConfigValidationError("tomllib is unavailable (Python 3.11+ required)")
     if not path.is_file():
         raise ConfigValidationError(f"config file not found: {path}")
 
-    raw = tomllib.loads(path.read_text(encoding="utf-8"))
+    try:
+        raw = loads_toml(path.read_text(encoding="utf-8"))
+    except RuntimeError as exc:
+        raise ConfigValidationError(str(exc)) from exc
     cfg = IdeaForgeConfig()
     cfg = IdeaForgeConfig._merge(cfg, raw)
     validate_config(cfg, raw_data=raw, check_paths=check_paths)
