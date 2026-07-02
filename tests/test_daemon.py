@@ -79,10 +79,26 @@ def test_tick_skips_when_snapshot_unchanged(tmp_path: Path, monkeypatch, capsys)
 
     watcher.tick()
     process_fn.reset_mock()
-    result = watcher.tick()
-    assert result is None
+    assert watcher.tick() is None
+    assert watcher.tick() is None
     process_fn.assert_not_called()
-    assert "No new recordings" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert out.count("No new recordings") == 1
+
+
+def test_tick_logs_idle_once_per_mount(tmp_path: Path, monkeypatch, capsys):
+    device = _device(tmp_path)
+    watcher = _watcher(process_fn=MagicMock(return_value=ProcessResult(files_processed=1)))
+
+    monkeypatch.setattr(
+        "ideaforge.daemon.find_recorder_mounts",
+        lambda *args, **kwargs: [device],
+    )
+
+    watcher.tick()
+    for _ in range(5):
+        watcher.tick()
+    assert capsys.readouterr().out.count("No new recordings") == 1
 
 
 def test_tick_runs_when_new_recording_added(tmp_path: Path, monkeypatch):

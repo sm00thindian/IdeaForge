@@ -213,11 +213,24 @@ class RecorderWatcher:
         self._connected: Set[str] = set()
         self._settled: Set[str] = set()
         self._last_snapshot: Dict[str, DeviceSnapshot] = {}
+        self._idle_announced: Set[str] = set()
         self._running = True
         self._status = StatusReporter()
 
     def stop(self) -> None:
         self._running = False
+
+    def _forget_mount(self, mount: str) -> None:
+        self._settled.discard(mount)
+        self._last_snapshot.pop(mount, None)
+        self._idle_announced.discard(mount)
+
+    def _announce_idle(self, mount_key: str, label: str) -> None:
+        """Log idle once per mount until recordings change or the device disconnects."""
+        if mount_key in self._idle_announced:
+            return
+        print(f"   No new recordings on {label} — watching")
+        self._idle_announced.add(mount_key)
 
     def tick(self) -> Optional[ProcessResult]:
         """Single poll cycle. Returns pipeline result, or None if idle."""
@@ -228,7 +241,7 @@ class RecorderWatcher:
         for mount in sorted(self._connected - current_mounts):
             label = Path(mount).name
             print(f"📴 Recorder disconnected: {label}")
-            self._settled.discard(mount)
+            self._forget_mount(mount)
         self._connected = current_mounts
 
         if not current:
@@ -247,7 +260,7 @@ class RecorderWatcher:
                 idle = devices[0]
                 mount_key = str(idle.mount_path)
                 if mount_key in self._settled:
-                    print(f"   No new recordings on {idle.label} — skipping")
+                    self._announce_idle(mount_key, idle.label)
                     self._status.set_watching(device=idle.label)
                     return None
             self._status.set_watching()
@@ -256,6 +269,7 @@ class RecorderWatcher:
         mount_key = str(device.mount_path)
 
         if mount_key not in self._settled:
+            self._idle_announced.discard(mount_key)
             print(
                 f"📼 Recorder connected: {device.label} "
                 f"({device.recording_count} recording(s))"
@@ -286,10 +300,11 @@ class RecorderWatcher:
 
         snap = snapshot_device(device)
         if self._last_snapshot.get(mount_key) == snap and not self.force:
-            print(f"   No new recordings on {device.label} — skipping")
+            self._announce_idle(mount_key, device.label)
             self._status.set_watching(device=device.label)
             return None
 
+        self._idle_announced.discard(mount_key)
         archive = archive_device_root(self.cfg, device.device_name)
         pipeline_result = self.process_fn(
             device.mount_path,
