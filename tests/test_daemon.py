@@ -1,5 +1,6 @@
 """Tests for USB recorder daemon watcher."""
 
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -145,6 +146,44 @@ def test_tick_skips_multiple_devices(tmp_path: Path, monkeypatch):
 
     assert watcher.tick() is None
     process_fn.assert_not_called()
+
+
+def test_daemon_rotates_logs_once_when_due(tmp_path, monkeypatch, capsys):
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    (log_dir / "daemon.log").write_text("old\n", encoding="utf-8")
+
+    times = [
+        datetime(2026, 7, 2, 2, 5, 0),
+        datetime(2026, 7, 2, 2, 10, 0),
+    ]
+
+    def fake_now():
+        return times.pop(0) if times else datetime(2026, 7, 2, 2, 15, 0)
+
+    cfg = IdeaForgeConfig(
+        daemon_log_rotate_enabled=True,
+        daemon_log_rotate_hour=2,
+        daemon_log_rotate_minute=0,
+    )
+    watcher = RecorderWatcher(
+        cfg=cfg,
+        stages=PipelineStages(copy=True, transcribe=True, diarize=False, llm=True),
+        sleep_fn=lambda _s: None,
+        process_fn=MagicMock(return_value=ProcessResult()),
+        now_fn=fake_now,
+    )
+    monkeypatch.setattr("ideaforge.log_util.DEFAULT_LOG_DIR", log_dir)
+    monkeypatch.setattr(
+        "ideaforge.daemon.find_recorder_mounts",
+        lambda *args, **kwargs: [],
+    )
+
+    watcher._maybe_rotate_logs()
+    watcher._maybe_rotate_logs()
+    out = capsys.readouterr().out
+    assert out.count("Daily log rotation") == 1
+    assert (log_dir / "daemon.log.1").read_text(encoding="utf-8") == "old\n"
 
 
 def test_device_snapshot_equality():

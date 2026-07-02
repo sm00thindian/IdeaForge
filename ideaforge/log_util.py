@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import os
 import shutil
+from datetime import date, datetime
 from pathlib import Path
-from typing import Iterable, List
+from typing import Iterable, List, Optional
 
 DEFAULT_LOG_DIR = Path.home() / "Library" / "Logs" / "ideaforge"
 DEFAULT_MAX_BYTES = 10 * 1024 * 1024  # 10 MiB
@@ -13,26 +14,56 @@ DEFAULT_BACKUPS = 3
 DAEMON_LOG_NAMES = ("daemon.log", "daemon.err.log")
 
 
+def list_log_files(log_dir: Path | None = None) -> List[Path]:
+    """Return active ``*.log`` files (excludes numbered backups like ``daemon.log.1``)."""
+    directory = log_dir or DEFAULT_LOG_DIR
+    if not directory.is_dir():
+        return []
+    return sorted(
+        path
+        for path in directory.glob("*.log")
+        if path.is_file() and path.name.endswith(".log")
+    )
+
+
+def is_daily_rotation_due(
+    now: datetime,
+    *,
+    hour: int,
+    minute: int,
+    last_rotated: Optional[date],
+) -> bool:
+    """True when local time is past today's schedule and logs were not rotated yet today."""
+    if last_rotated == now.date():
+        return False
+    scheduled = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    return now >= scheduled
+
+
 def rotate_log_file(
     path: Path,
     *,
     max_bytes: int = DEFAULT_MAX_BYTES,
     backups: int = DEFAULT_BACKUPS,
+    force: bool = False,
 ) -> bool:
     """
-    Rotate ``path`` when it exceeds ``max_bytes``.
+    Rotate ``path`` when it exceeds ``max_bytes`` or when ``force`` is True.
 
     Returns True when a rotation occurred.
     """
-    if backups < 1 or max_bytes < 1:
+    if backups < 1:
         return False
     if not path.is_file():
         return False
-    try:
-        if path.stat().st_size <= max_bytes:
+    if not force:
+        if max_bytes < 1:
             return False
-    except OSError:
-        return False
+        try:
+            if path.stat().st_size <= max_bytes:
+                return False
+        except OSError:
+            return False
 
     oldest = path.with_name(f"{path.name}.{backups}")
     if oldest.exists():
@@ -60,11 +91,31 @@ def rotate_daemon_logs(
     max_bytes: int = DEFAULT_MAX_BYTES,
     backups: int = DEFAULT_BACKUPS,
 ) -> List[Path]:
-    """Rotate daemon log files that exceed the size threshold."""
+    """Rotate core daemon log files that exceed the size threshold."""
     directory = log_dir or DEFAULT_LOG_DIR
     rotated: List[Path] = []
     for name in names:
         target = directory / name
         if rotate_log_file(target, max_bytes=max_bytes, backups=backups):
+            rotated.append(target)
+    return rotated
+
+
+def rotate_all_logs(
+    log_dir: Path | None = None,
+    *,
+    force: bool = False,
+    max_bytes: int = DEFAULT_MAX_BYTES,
+    backups: int = DEFAULT_BACKUPS,
+) -> List[Path]:
+    """Rotate every active ``*.log`` file in the IdeaForge log directory."""
+    rotated: List[Path] = []
+    for target in list_log_files(log_dir):
+        if rotate_log_file(
+            target,
+            max_bytes=max_bytes,
+            backups=backups,
+            force=force,
+        ):
             rotated.append(target)
     return rotated

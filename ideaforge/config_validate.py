@@ -64,6 +64,10 @@ SECTION_KEYS: Dict[str, Set[str]] = {
         "sync_device_clock",
         "clock_skew_threshold_seconds",
         "notify_on_failure",
+        "log_rotate_enabled",
+        "log_rotate_hour",
+        "log_rotate_minute",
+        "log_rotate_backups",
     },
     "export": {
         "reminders",
@@ -141,6 +145,12 @@ def validate_config_values(cfg: IdeaForgeConfig) -> List[str]:
         issues.append("daemon.settle_seconds must be >= 0")
     if cfg.daemon_clock_skew_threshold_seconds < 0:
         issues.append("daemon.clock_skew_threshold_seconds must be >= 0")
+    if not 0 <= cfg.daemon_log_rotate_hour <= 23:
+        issues.append("daemon.log_rotate_hour must be between 0 and 23")
+    if not 0 <= cfg.daemon_log_rotate_minute <= 59:
+        issues.append("daemon.log_rotate_minute must be between 0 and 59")
+    if cfg.daemon_log_rotate_backups < 1:
+        issues.append("daemon.log_rotate_backups must be >= 1")
     if cfg.max_parallel_sessions < 1:
         issues.append("processing.max_parallel_sessions must be >= 1")
     if cfg.min_file_size_bytes < 0:

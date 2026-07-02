@@ -6,6 +6,7 @@ import signal
 import sys
 import time
 from dataclasses import dataclass
+from datetime import date, datetime
 from pathlib import Path
 from typing import Callable, Dict, Optional, Set
 
@@ -26,6 +27,7 @@ from ideaforge.ingest import (
 )
 from ideaforge.pipeline import PipelineStages, resolve_stages
 from ideaforge.notify import ProcessResult, notify_process_complete
+from ideaforge.log_util import is_daily_rotation_due, rotate_all_logs
 from ideaforge.runner import process_source
 from ideaforge.status import Stage, StatusReporter
 
@@ -201,6 +203,7 @@ class RecorderWatcher:
         force: bool = False,
         sleep_fn: Callable[[float], None] = time.sleep,
         process_fn: Callable[..., ProcessResult] = daemon_process_device,
+        now_fn: Callable[[], datetime] = datetime.now,
     ) -> None:
         self.cfg = cfg
         self.stages = stages
@@ -214,6 +217,8 @@ class RecorderWatcher:
         self._settled: Set[str] = set()
         self._last_snapshot: Dict[str, DeviceSnapshot] = {}
         self._idle_announced: Set[str] = set()
+        self._last_log_rotate_date: Optional[date] = None
+        self._now_fn = now_fn
         self._running = True
         self._status = StatusReporter()
 
@@ -231,6 +236,30 @@ class RecorderWatcher:
             return
         print(f"   No new recordings on {label} — watching")
         self._idle_announced.add(mount_key)
+
+    def _maybe_rotate_logs(self) -> None:
+        """Rotate all IdeaForge logs once per day after the configured local time."""
+        if not self.cfg.daemon_log_rotate_enabled:
+            return
+        now = self._now_fn()
+        if not is_daily_rotation_due(
+            now,
+            hour=self.cfg.daemon_log_rotate_hour,
+            minute=self.cfg.daemon_log_rotate_minute,
+            last_rotated=self._last_log_rotate_date,
+        ):
+            return
+        rotated = rotate_all_logs(
+            force=True,
+            backups=self.cfg.daemon_log_rotate_backups,
+        )
+        self._last_log_rotate_date = now.date()
+        if rotated:
+            names = ", ".join(path.name for path in rotated)
+            print(
+                f"🗂️  Daily log rotation ({now.strftime('%H:%M')} local): "
+                f"{names}"
+            )
 
     def tick(self) -> Optional[ProcessResult]:
         """Single poll cycle. Returns pipeline result, or None if idle."""
@@ -365,6 +394,7 @@ class RecorderWatcher:
 
         while self._running:
             try:
+                self._maybe_rotate_logs()
                 self.tick()
             except Exception as exc:
                 print(f"❌ Daemon error: {exc}", file=sys.stderr)

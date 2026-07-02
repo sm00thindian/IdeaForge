@@ -139,6 +139,10 @@ class IdeaForgeConfig:
     daemon_notify: bool = True
     daemon_sync_device_clock: bool = True
     daemon_clock_skew_threshold_seconds: float = 60.0
+    daemon_log_rotate_enabled: bool = True
+    daemon_log_rotate_hour: int = 2
+    daemon_log_rotate_minute: int = 0
+    daemon_log_rotate_backups: int = 3
     notify_on_failure: bool = False
     export_reminders: bool = False
     export_reminders_list: str = "IdeaForge"
@@ -273,6 +277,14 @@ class IdeaForgeConfig:
                 )
             if "notify_on_failure" in daemon:
                 cfg.notify_on_failure = bool(daemon["notify_on_failure"])
+            if "log_rotate_enabled" in daemon:
+                cfg.daemon_log_rotate_enabled = bool(daemon["log_rotate_enabled"])
+            if "log_rotate_hour" in daemon:
+                cfg.daemon_log_rotate_hour = int(daemon["log_rotate_hour"])
+            if "log_rotate_minute" in daemon:
+                cfg.daemon_log_rotate_minute = int(daemon["log_rotate_minute"])
+            if "log_rotate_backups" in daemon:
+                cfg.daemon_log_rotate_backups = int(daemon["log_rotate_backups"])
         if "export" in data:
             export = data["export"]
             cfg.export_reminders = bool(export.get("reminders", cfg.export_reminders))

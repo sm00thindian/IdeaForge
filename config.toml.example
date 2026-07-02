@@ -69,6 +69,10 @@ notify = true               # macOS notification when pipeline finishes
 sync_device_clock = true    # fix recset.txt before ingest (before unmount)
 clock_skew_threshold_seconds = 60  # only write when skew exceeds this
 notify_on_failure = false   # macOS alert when a pipeline session fails (opt-in)
+log_rotate_enabled = true   # daily rotation when daemon is idle
+log_rotate_hour = 2         # local time (0–23); default 2:00 AM
+log_rotate_minute = 0
+log_rotate_backups = 3      # keep .log.1 … .log.N per file
 
 # Menu bar progress UI (optional):
 #   ./scripts/install-menubar.sh
