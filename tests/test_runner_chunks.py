@@ -58,3 +58,6 @@ def test_process_source_merges_chunks_before_transcribe(tmp_path: Path):
     audio_arg = transcribe.call_args.args[0]
     assert audio_arg.name == "R2025-07-07-17-00-00_merged.wav"
     assert transcribe.call_args.kwargs["output_stem"] == "R2025-07-07-17-00-00"
+    archive_day = archive / "2025-07-07"
+    assert (archive_day / "R2025-07-07-17-00-00_merged.wav").is_file()
+    assert list(archive_day.glob("R2025-07-07-17-*.WAV")) == []

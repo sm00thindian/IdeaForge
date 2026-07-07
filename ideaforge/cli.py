@@ -203,6 +203,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Re-run pipeline on archived sessions (--source required; implies --force, no copy)",
     )
     parser.add_argument(
+        "--rename-summaries",
+        action="store_true",
+        help="Rename existing *_summary.md files to YYYYMMDD - title.md (--source required)",
+    )
+    parser.add_argument(
         "--from",
         dest="reprocess_from",
         metavar="DATE",
@@ -558,6 +563,32 @@ def main(argv: Optional[list] = None) -> int:
             f"\n✅ Ingest complete — {ingest.files_verified} verified, "
             f"{ingest.files_deleted} removed from device"
         )
+        return 0
+
+    if args.rename_summaries:
+        if not args.source:
+            parser.error("--rename-summaries requires --source pointing at a date folder or archive")
+        from ideaforge.reprocess import (
+            resolve_archive_root_for_source,
+            resolve_reprocess_folders,
+        )
+        from ideaforge.summary_names import refresh_summaries_in_folder
+
+        source = args.source.expanduser().resolve()
+        if not source.is_dir():
+            print(f"❌ Source not found: {source}")
+            return 1
+        archive = resolve_archive_root_for_source(cfg, source)
+        folders = resolve_reprocess_folders(archive, source)
+        renamed: list[Path] = []
+        for folder in folders:
+            renamed.extend(refresh_summaries_in_folder(folder))
+        if not renamed:
+            print("❌ No summary JSON files found to rename")
+            return 1
+        print(f"✓ Renamed {len(renamed)} meeting note(s):")
+        for path in renamed:
+            print(f"   {path.name}")
         return 0
 
     if args.reprocess:

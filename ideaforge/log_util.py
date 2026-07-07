@@ -9,9 +9,25 @@ from pathlib import Path
 from typing import Iterable, List, Optional
 
 DEFAULT_LOG_DIR = Path.home() / "Library" / "Logs" / "ideaforge"
+ROTATE_STATE_PATH = Path.home() / ".config" / "ideaforge" / ".log-rotate-date"
 DEFAULT_MAX_BYTES = 10 * 1024 * 1024  # 10 MiB
 DEFAULT_BACKUPS = 3
 DAEMON_LOG_NAMES = ("daemon.log", "daemon.err.log")
+
+
+def load_last_rotated_date() -> Optional[date]:
+    """Return the date logs were last rotated (persisted across daemon restarts)."""
+    if not ROTATE_STATE_PATH.is_file():
+        return None
+    try:
+        return date.fromisoformat(ROTATE_STATE_PATH.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return None
+
+
+def save_last_rotated_date(rotated: date) -> None:
+    ROTATE_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    ROTATE_STATE_PATH.write_text(rotated.isoformat(), encoding="utf-8")
 
 
 def list_log_files(log_dir: Path | None = None) -> List[Path]:
@@ -75,8 +91,11 @@ def rotate_log_file(
         if older.exists():
             shutil.move(str(older), str(newer))
 
-    shutil.move(str(path), str(path.with_name(f"{path.name}.1")))
-    path.touch()
+    # Copytruncate keeps the inode so launchd stdout/stderr keep writing here.
+    backup = path.with_name(f"{path.name}.1")
+    shutil.copy2(str(path), str(backup))
+    with open(path, "w", encoding="utf-8"):
+        pass
     try:
         os.chmod(path, 0o644)
     except OSError:

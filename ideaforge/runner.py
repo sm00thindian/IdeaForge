@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import List, Optional, Set
 
 from ideaforge.backends import resolve_whisper_backend
-from ideaforge.chunks import RecordingGroup, prepare_session_groups
+from ideaforge.chunks import RecordingGroup, prepare_session_groups, prepare_transcript_groups
 from ideaforge.device_registry import device_name_for_archive_root, resolve_chunk_mode
 from ideaforge.config import IdeaForgeConfig
 from ideaforge.ingest import (
@@ -118,14 +118,24 @@ def process_source(
             include_failures=include_failed_retries,
         )
 
+    transcript_files: List[Path] = []
     if scoped is not None:
         audio_files = sorted(
             {
                 path
                 for path in scoped
                 if path.is_file()
+                and path.suffix.lower() not in {".txt"}
                 and path.stat().st_size >= cfg.min_file_size_bytes
                 and not is_derived_audio(path)
+            },
+            key=lambda p: p.stat().st_mtime,
+        )
+        transcript_files = sorted(
+            {
+                path
+                for path in scoped
+                if path.is_file() and path.suffix.lower() == ".txt"
             },
             key=lambda p: p.stat().st_mtime,
         )
@@ -133,15 +143,18 @@ def process_source(
         audio_files = get_audio_files(source, extensions, cfg.min_file_size_bytes)
     device_name = device_name_for_archive_root(cfg, archive)
     chunk_mode = resolve_chunk_mode(cfg, device_name)
-    groups = prepare_session_groups(
-        audio_files,
-        merge_chunks=cfg.merge_chunks,
-        chunk_mode=chunk_mode,  # type: ignore[arg-type]
-        chunk_gap_seconds=cfg.chunk_gap_seconds,
-        merge_min_chunk_seconds=cfg.merge_min_chunk_seconds,
-        split_silence_seconds=cfg.split_silence_seconds,
-        split_window_seconds=cfg.split_window_seconds,
-    )
+    if transcript_files and stages.llm and not stages.transcribe and not audio_files:
+        groups = prepare_transcript_groups(transcript_files)
+    else:
+        groups = prepare_session_groups(
+            audio_files,
+            merge_chunks=cfg.merge_chunks,
+            chunk_mode=chunk_mode,  # type: ignore[arg-type]
+            chunk_gap_seconds=cfg.chunk_gap_seconds,
+            merge_min_chunk_seconds=cfg.merge_min_chunk_seconds,
+            split_silence_seconds=cfg.split_silence_seconds,
+            split_window_seconds=cfg.split_window_seconds,
+        )
 
     if show_header:
         print_run_header(

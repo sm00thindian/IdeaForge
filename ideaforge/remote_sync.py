@@ -160,9 +160,11 @@ def maybe_sync_after_notes(
             reason="after_notes sync disabled",
         )
 
+    from ideaforge.summary_names import resolve_summary_md_path
+
     summary_json = work_folder / f"{session_stem}_summary.json"
-    summary_md = work_folder / f"{session_stem}_summary.md"
-    if not summary_json.exists() and not summary_md.exists():
+    summary_md = resolve_summary_md_path(work_folder, session_stem)
+    if not summary_json.exists() and summary_md is None:
         return SyncResult(
             ok=True,
             local_path=str(work_folder),

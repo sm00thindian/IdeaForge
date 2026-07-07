@@ -24,6 +24,8 @@ def test_mount_matches_glob():
     assert mount_matches_glob("NO NAME", "NO NAME")
     assert mount_matches_glob("RECORDER", "REC*")
     assert not mount_matches_glob("Other", "NO NAME")
+    assert mount_matches_glob("IDEAFORGE", "IdeaForge")
+    assert mount_matches_glob("ideaforge", "IDEA*")
 
 
 def test_z28_profile_discovers_record_folder_files(tmp_path: Path):

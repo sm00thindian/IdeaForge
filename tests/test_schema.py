@@ -5,6 +5,7 @@ from ideaforge.schema import (
     CreativeOutput,
     CreativeSpark,
     Decision,
+    DiscussionTopic,
     FollowUp,
     MeetingNotes,
     SpeakerContribution,
@@ -16,65 +17,49 @@ def test_meeting_notes_markdown():
     notes = MeetingNotes(
         title="Sprint Planning",
         date="2026-06-27",
+        time="10:00 AM ET",
+        platform="Zoom",
+        attendees="Alex (Engineering), Jordan (PM)",
         meeting_type="planning",
         executive_summary="Team aligned on Q3 priorities.",
-        topics=["Timeline", "Backend refactor"],
-        speakers=[
-            SpeakerContribution(
-                speaker="SPEAKER_00",
-                summary="Proposed timeline changes",
-                key_quotes=["We need two more weeks"],
+        discussion_topics=[
+            DiscussionTopic(
+                title="Timeline",
+                points=["Backend refactor is priority"],
             )
         ],
-        key_points=["Backend refactor is priority"],
         action_items=[
             ActionItem(
                 who="Alex",
                 what="Update roadmap",
                 when="Friday",
-                priority="high",
-                confidence="explicit",
-                source_quote="I'll update the roadmap by Friday",
+                notes="Supports Q3 release planning",
+                status="Open",
             )
         ],
         decisions=[Decision(decision="Delay launch to August", rationale="Backend not ready")],
         follow_ups=[FollowUp(topic="Capacity planning", owner="Alex", by_when="next sync")],
         risks_blockers=["Hiring delay on backend team"],
+        preparation_notes=["[Unclear in transcript: exact launch date]"],
     )
     md = notes.to_markdown()
-    assert "# Sprint Planning" in md
-    assert "SPEAKER_00" in md
+    assert "# Meeting Minutes: Sprint Planning" in md
     assert "Alex" in md
     assert "Delay launch to August" in md
-    assert "Risks & Blockers" in md
-    assert "explicit" in md
+    assert "## Action Items" in md
+    assert "| 1 | Update roadmap | Alex |" in md
+    assert "Preparation Notes" in md
+    assert "**End of Minutes**" in md
 
 
-def test_speaker_identities_in_markdown():
+def test_empty_action_items_message():
     notes = MeetingNotes(
         title="Team Sync",
         date="2026-06-27",
         executive_summary="Quick alignment on priorities.",
-        speaker_identities=[
-            SpeakerIdentity(
-                speaker_id="SPEAKER_00",
-                inferred_name="Alex",
-                confidence="high",
-                rationale="Introduced as Alex at start",
-            ),
-            SpeakerIdentity(
-                speaker_id="SPEAKER_01",
-                inferred_name="Project lead",
-                confidence="medium",
-                rationale="Led timeline discussion, name not stated",
-            ),
-        ],
     )
     md = notes.to_markdown()
-    assert "Speaker Identities" in md
-    assert "SPEAKER_00" in md
-    assert "Alex" in md
-    assert "Project lead" in md
+    assert "No explicit action items were captured in the transcript." in md
 
 
 def test_creative_output_json_roundtrip():

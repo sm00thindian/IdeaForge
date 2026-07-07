@@ -257,6 +257,16 @@ def expand_long_recordings(
     return expanded
 
 
+def prepare_transcript_groups(files: Sequence[Path]) -> List[RecordingGroup]:
+    """Build one session per archived ``R*.txt`` transcript (LLM-only reprocess)."""
+    groups: List[RecordingGroup] = []
+    for path in sorted(files, key=lambda item: item.stat().st_mtime):
+        resolved = resolve_recording_datetime(path)
+        chunk = RecordingChunk(path=path, start=resolved.dt, duration_seconds=0.0)
+        groups.append(RecordingGroup(chunks=(chunk,), recording_time=resolved))
+    return groups
+
+
 def prepare_session_groups(
     files: Sequence[Path],
     *,

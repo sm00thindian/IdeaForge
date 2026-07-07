@@ -20,7 +20,10 @@ def test_meeting_prompt_infers_names_instruction():
     assert "infer" in system.lower()
     assert "speaker_identities" in system.lower()
     assert "action_items" in user.lower() or "action item" in user.lower()
-    assert "never raw SPEAKER_XX" in user
+    assert "Federal Reserve" in system
+    assert "OSCAL" in system
+    assert "discussion_topics" in user
+    assert "preparation_notes" in user
 
 
 def test_meeting_prompt_without_speakers():

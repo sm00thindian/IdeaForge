@@ -1,12 +1,15 @@
 """Tests for daemon log rotation."""
 
+import os
 from datetime import date, datetime
 
 from ideaforge.log_util import (
     is_daily_rotation_due,
     list_log_files,
+    load_last_rotated_date,
     rotate_all_logs,
     rotate_log_file,
+    save_last_rotated_date,
 )
 
 
@@ -73,3 +76,26 @@ def test_is_daily_rotation_due_skips_after_rotation_today():
 def test_is_daily_rotation_due_catches_up_after_missed_window():
     now = datetime(2026, 7, 2, 8, 0, 0)
     assert is_daily_rotation_due(now, hour=2, minute=0, last_rotated=date(2026, 7, 1)) is True
+
+
+def test_rotate_log_file_preserves_inode_for_open_writers(tmp_path):
+    log = tmp_path / "daemon.log"
+    log.write_text("before\n", encoding="utf-8")
+    inode_before = log.stat().st_ino
+    fd = os.open(log, os.O_WRONLY | os.O_APPEND)
+    try:
+        assert rotate_log_file(log, force=True, backups=2) is True
+        os.write(fd, b"after\n")
+    finally:
+        os.close(fd)
+    assert log.stat().st_ino == inode_before
+    assert log.read_text(encoding="utf-8") == "after\n"
+    assert (tmp_path / "daemon.log.1").read_text(encoding="utf-8") == "before\n"
+
+
+def test_rotate_date_state_round_trip(tmp_path, monkeypatch):
+    state = tmp_path / "log-rotate-date"
+    monkeypatch.setattr("ideaforge.log_util.ROTATE_STATE_PATH", state)
+    assert load_last_rotated_date() is None
+    save_last_rotated_date(date(2026, 7, 2))
+    assert load_last_rotated_date() == date(2026, 7, 2)

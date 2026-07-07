@@ -11,6 +11,12 @@ from typing import Any, Dict, List, Optional
 from ideaforge.config import has_anthropic_api_key, has_xai_api_key
 from ideaforge.session_time import ResolvedRecordingTime
 from ideaforge.export import ExportSettings, export_action_items
+from ideaforge.summary_names import (
+    action_preview_lines,
+    legacy_summary_md_path,
+    plan_summary_md_path,
+    resolve_summary_md_path,
+)
 from ideaforge.prompts import Mode, build_prompt
 from ideaforge.status import Stage, status_touch
 from ideaforge.schema import (
@@ -18,6 +24,7 @@ from ideaforge.schema import (
     CreativeOutput,
     CreativeSpark,
     Decision,
+    DiscussionTopic,
     FollowUp,
     MeetingNotes,
     SpeakerContribution,
@@ -56,19 +63,23 @@ def process_transcript(
 ) -> Optional[Path]:
     """Generate structured output from a transcript. Returns primary output path."""
     stem = transcript_path.stem
-    md_path = output_dir / f"{stem}_summary.md"
     json_path = output_dir / f"{stem}_summary.json"
+    existing_md = resolve_summary_md_path(output_dir, stem)
 
     if not force:
-        if output_format == "md" and md_path.exists():
+        if output_format == "md" and existing_md is not None:
             print("    ↳ Summary exists → skipping")
-            return md_path
+            return existing_md
         if output_format == "json" and json_path.exists():
             print("    ↳ Summary exists → skipping")
             return json_path
-        if output_format == "both" and md_path.exists() and json_path.exists():
+        if (
+            output_format == "both"
+            and existing_md is not None
+            and json_path.exists()
+        ):
             print("    ↳ Summary exists → skipping")
-            return md_path
+            return existing_md
 
     transcript = transcript_path.read_text(encoding="utf-8").strip()
     if len(transcript) < 50:
@@ -124,6 +135,12 @@ def process_transcript(
 
     parsed = _parse_json_response(raw or "")
     if not parsed:
+        md_path = plan_summary_md_path(
+            folder=output_dir,
+            session_stem=stem,
+            title=stem,
+            iso_date=recording_time.iso_date if recording_time else "",
+        )
         md_path.write_text((raw or "").strip(), encoding="utf-8")
         print(f"    ✓ Raw summary saved (non-JSON response): {md_path.name}")
         return md_path
@@ -132,7 +149,7 @@ def process_transcript(
     primary_path = _write_structured_output(
         parsed,
         resolved_mode,
-        md_path,
+        output_dir,
         json_path,
         output_format,
         transcript_path,
@@ -259,7 +276,7 @@ def _resolve_mode(parsed: Dict[str, Any], requested: Mode) -> str:
 def _write_structured_output(
     parsed: Dict[str, Any],
     mode: str,
-    md_path: Path,
+    output_dir: Path,
     json_path: Path,
     output_format: str,
     transcript_path: Path,
@@ -269,15 +286,31 @@ def _write_structured_output(
     export_settings: Optional[ExportSettings] = None,
     recording_time: Optional[ResolvedRecordingTime] = None,
 ) -> Path:
+    session_stem = transcript_path.stem
     if mode == "creative":
         output = _dict_to_creative(parsed, transcript_path, recording_time=recording_time)
     else:
         output = _dict_to_meeting(parsed, transcript_path, recording_time=recording_time)
 
+    previews = (
+        action_preview_lines(output.action_items)
+        if mode != "creative"
+        else []
+    )
+    md_path = plan_summary_md_path(
+        folder=output_dir,
+        session_stem=session_stem,
+        title=output.title,
+        iso_date=output.date,
+        action_preview=previews,
+    )
+
     output.metadata.update({
         "llm_backend": llm_backend,
         "llm_model": llm_model,
         "source_transcript": transcript_path.name,
+        "session_stem": session_stem,
+        "summary_md": md_path.name,
     })
     if recording_time is not None:
         output.metadata.update({
@@ -295,6 +328,17 @@ def _write_structured_output(
     if output_format in ("md", "both"):
         md_path.write_text(output.to_markdown(), encoding="utf-8")
         print(f"    ✓ Markdown saved: {md_path.name}")
+        legacy_md = legacy_summary_md_path(output_dir, session_stem)
+        if legacy_md != md_path and legacy_md.exists():
+            legacy_md.unlink()
+        existing = resolve_summary_md_path(output_dir, session_stem)
+        if (
+            existing is not None
+            and existing != md_path
+            and existing != legacy_md
+            and existing.is_file()
+        ):
+            existing.unlink()
 
     if (
         mode != "creative"
@@ -345,8 +389,18 @@ def _dict_to_meeting(
             confidence=a.get("confidence"),
             source_quote=a.get("source_quote"),
             blocked_by=a.get("blocked_by"),
+            notes=a.get("notes"),
+            status=a.get("status") or "Open",
         )
         for a in data.get("action_items", [])
+    ]
+    discussion_topics = [
+        DiscussionTopic(
+            title=item.get("title", "Discussion"),
+            points=item.get("points", []),
+        )
+        for item in data.get("discussion_topics", [])
+        if isinstance(item, dict)
     ]
     decisions = _parse_decisions(data.get("decisions", []))
     follow_ups = _parse_follow_ups(data.get("follow_ups", []))
@@ -356,8 +410,13 @@ def _dict_to_meeting(
         title=data.get("title") or transcript_path.stem,
         date=authoritative_date or data.get("date") or "",
         meeting_type=data.get("meeting_type"),
+        time=data.get("time") or None,
+        platform=data.get("platform") or None,
+        attendees=data.get("attendees") or None,
         executive_summary=data.get("executive_summary", ""),
         topics=data.get("topics", []),
+        discussion_topics=discussion_topics,
+        preparation_notes=data.get("preparation_notes", []),
         speaker_identities=speaker_identities,
         speakers=speakers,
         key_points=data.get("key_points", []),

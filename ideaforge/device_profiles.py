@@ -217,4 +217,5 @@ def get_profile(name: str) -> DeviceProfile:
 
 
 def mount_matches_glob(volume_label: str, mount_glob: str) -> bool:
-    return fnmatch.fnmatchcase(volume_label, mount_glob)
+    """Match volume label to glob (case-insensitive — macOS labels vary in casing)."""
+    return fnmatch.fnmatch(volume_label.casefold(), mount_glob.casefold())

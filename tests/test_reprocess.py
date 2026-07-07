@@ -8,9 +8,11 @@ from unittest.mock import patch
 import numpy as np
 import wave
 
-from ideaforge.config import IdeaForgeConfig
+from ideaforge.config import DeviceBinding, IdeaForgeConfig
 from ideaforge.reprocess import (
     collect_reprocess_scope,
+    collect_reprocess_transcript_scope,
+    resolve_archive_root_for_source,
     resolve_reprocess_folders,
     run_reprocess,
 )
@@ -64,6 +66,33 @@ def test_collect_reprocess_scope_filters_session_stem(tmp_path: Path):
     )
     assert len(scope) == 1
     assert scope[0].parent.name == "2026-06-28"
+
+
+def test_resolve_archive_root_for_device_subfolder(tmp_path: Path):
+    archive = tmp_path / "IdeaForge"
+    device_root = archive / "z28"
+    day = device_root / "2026-06-28"
+    day.mkdir(parents=True)
+    cfg = IdeaForgeConfig(
+        archive=archive,
+        devices=[DeviceBinding(name="z28", mount_glob="NO NAME", profile="z28")],
+    )
+    assert resolve_archive_root_for_source(cfg, day) == device_root.resolve()
+
+
+def test_collect_reprocess_transcript_scope(tmp_path: Path):
+    archive = tmp_path / "IdeaForge" / "z28"
+    folder = archive / "2026-06-28"
+    folder.mkdir(parents=True)
+    transcript = folder / "R2026-06-28-08-00-00.txt"
+    transcript.write_text("Alice: hello\n" * 5, encoding="utf-8")
+    cfg = IdeaForgeConfig(archive=tmp_path / "IdeaForge")
+    scope = collect_reprocess_transcript_scope(
+        archive,
+        folder,
+        session_stems=["R2026-06-28-08-00-00"],
+    )
+    assert scope == [transcript]
 
 
 def test_run_reprocess_invokes_pipeline_with_force(tmp_path: Path):

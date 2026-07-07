@@ -6,7 +6,7 @@ import json
 import threading
 from contextlib import nullcontext
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence, Set
 
 from ideaforge.audio_util import concat_wav_files, ensure_pipeline_audio
 from ideaforge.chunks import RecordingGroup
@@ -32,13 +32,53 @@ from ideaforge.status import (
     active_reporter,
     build_step_plan,
 )
+from ideaforge.summary_names import legacy_summary_md_path, resolve_summary_md_path
 from ideaforge.transcribe import diarize_existing, transcribe_audio
 
 
+def _purge_chunk_sources_after_merge(
+    *,
+    chunk_paths: Sequence[Path],
+    pipeline_paths: Sequence[Path],
+    merged_path: Path,
+) -> int:
+    """Delete per-chunk source WAVs (and normalize intermediates) after merge succeeds."""
+    if not merged_path.is_file():
+        return 0
+    try:
+        if merged_path.stat().st_size < 1_000:
+            return 0
+    except OSError:
+        return 0
+
+    merged_key = merged_path.resolve()
+    to_remove: Set[Path] = set()
+    for path in (*chunk_paths, *pipeline_paths):
+        try:
+            resolved = path.resolve()
+        except OSError:
+            continue
+        if resolved == merged_key:
+            continue
+        if path.suffix.lower() != ".wav":
+            continue
+        to_remove.add(path)
+
+    removed = 0
+    for path in sorted(to_remove, key=lambda item: str(item)):
+        try:
+            path.unlink()
+            removed += 1
+        except OSError:
+            print(f"   ⚠️  Could not remove chunk after merge: {path.name}")
+    return removed
+
+
 def output_paths(folder: Path, stem: str) -> Dict[str, Path]:
+    resolved_md = resolve_summary_md_path(folder, stem)
     return {
         "transcript": folder / f"{stem}.txt",
-        "summary_md": folder / f"{stem}_summary.md",
+        "summary_md": resolved_md or legacy_summary_md_path(folder, stem),
         "summary_json": folder / f"{stem}_summary.json",
         "diarized": folder / f"{stem}_diarized.json",
         "segments": folder / f"{stem}_segments.json",
@@ -47,10 +87,10 @@ def output_paths(folder: Path, stem: str) -> Dict[str, Path]:
 
 def summary_exists(paths: Dict[str, Path], output_format: str) -> bool:
     if output_format == "md":
-        return paths["summary_md"].exists()
+        return paths["summary_md"].is_file()
     if output_format == "json":
-        return paths["summary_json"].exists()
-    return paths["summary_md"].exists() and paths["summary_json"].exists()
+        return paths["summary_json"].is_file()
+    return paths["summary_md"].is_file() and paths["summary_json"].is_file()
 
 
 def read_summary_brief(summary_json: Path, *, session_stem: str) -> RecordingResult:
@@ -312,6 +352,13 @@ def _process_group_body(
         merged_name = f"{session_stem}_merged.wav"
         process_path = concat_wav_files(pipeline_paths, work_folder / merged_name)
         print(f"   🔗 Merged {len(pipeline_paths)} chunks → {process_path.name}")
+        removed = _purge_chunk_sources_after_merge(
+            chunk_paths=copied_paths,
+            pipeline_paths=pipeline_paths,
+            merged_path=process_path,
+        )
+        if removed:
+            print(f"   🗑️  Removed {removed} chunk file(s) after merge")
         if reporter is not None:
             reporter.mark_step_done(StepId.MERGE)
     else:

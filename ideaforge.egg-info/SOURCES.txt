@@ -83,6 +83,7 @@ tests/test_gpu_smoke.py
 tests/test_health.py
 tests/test_ingest.py
 tests/test_ingest_device.py
+tests/test_ingest_device_clock.py
 tests/test_ingest_only.py
 tests/test_llm.py
 tests/test_log_util.py

@@ -27,7 +27,12 @@ from ideaforge.ingest import (
 )
 from ideaforge.pipeline import PipelineStages, resolve_stages
 from ideaforge.notify import ProcessResult, notify_process_complete
-from ideaforge.log_util import is_daily_rotation_due, rotate_all_logs
+from ideaforge.log_util import (
+    is_daily_rotation_due,
+    load_last_rotated_date,
+    rotate_all_logs,
+    save_last_rotated_date,
+)
 from ideaforge.runner import process_source
 from ideaforge.status import Stage, StatusReporter
 
@@ -217,7 +222,7 @@ class RecorderWatcher:
         self._settled: Set[str] = set()
         self._last_snapshot: Dict[str, DeviceSnapshot] = {}
         self._idle_announced: Set[str] = set()
-        self._last_log_rotate_date: Optional[date] = None
+        self._last_log_rotate_date: Optional[date] = load_last_rotated_date()
         self._now_fn = now_fn
         self._running = True
         self._status = StatusReporter()
@@ -254,6 +259,7 @@ class RecorderWatcher:
             backups=self.cfg.daemon_log_rotate_backups,
         )
         self._last_log_rotate_date = now.date()
+        save_last_rotated_date(now.date())
         if rotated:
             names = ", ".join(path.name for path in rotated)
             print(

@@ -40,6 +40,7 @@ def test_format_status_report_includes_failures(tmp_path: Path):
         patch("ideaforge.health.check_menubar_health") as menubar,
         patch("ideaforge.health.find_recorder_mounts", return_value=[]),
         patch("ideaforge.health.load_status") as load_status,
+        patch("ideaforge.status.find_cli_pipeline_pids", return_value=[]),
     ):
         daemon.return_value = ServiceHealth(
             label="com.ideaforge.daemon",

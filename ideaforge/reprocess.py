@@ -9,9 +9,11 @@ from pathlib import Path
 from typing import List, Optional, Sequence, Set
 
 from ideaforge.config import IdeaForgeConfig
+from ideaforge.device_registry import list_device_archive_roots
 from ideaforge.ingest import get_audio_files, is_derived_audio
 from ideaforge.pipeline import PipelineStages, resolve_stages
 from ideaforge.runner import process_source
+from ideaforge.session_time import RECORDING_STEM_PATTERN
 
 DATE_FOLDER_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 RECORDING_STEM_RE = re.compile(r"^R\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}", re.IGNORECASE)
@@ -82,6 +84,68 @@ def _recording_stem(path: Path) -> Optional[str]:
     return match.group(0)
 
 
+def resolve_archive_root_for_source(cfg: IdeaForgeConfig, source: Path) -> Path:
+    """Pick the archive root that owns ``source`` (device subfolders, processed log)."""
+    resolved = source.expanduser().resolve()
+    archive = cfg.archive.expanduser().resolve()
+
+    best: Optional[Path] = None
+    for _, device_root in list_device_archive_roots(cfg):
+        device_resolved = device_root.resolve()
+        if resolved == device_resolved or device_resolved in resolved.parents:
+            if best is None or len(str(device_resolved)) > len(str(best)):
+                best = device_resolved
+    if best is not None:
+        return best
+
+    for parent in [resolved, *resolved.parents]:
+        if (parent / ".processed_log.json").is_file():
+            return parent
+        if parent == archive:
+            break
+    return archive
+
+
+def collect_reprocess_transcript_scope(
+    archive: Path,
+    source: Path,
+    *,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    session_stems: Optional[Sequence[str]] = None,
+) -> List[Path]:
+    """Collect transcript ``.txt`` files when source audio has already been removed."""
+    folders = resolve_reprocess_folders(
+        archive,
+        source,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    files: List[Path] = []
+    seen: Set[str] = set()
+    for folder in folders:
+        if not folder.is_dir():
+            continue
+        for path in sorted(folder.glob("R*.txt")):
+            if not RECORDING_STEM_PATTERN.match(path.stem):
+                continue
+            key = str(path.resolve())
+            if key in seen:
+                continue
+            seen.add(key)
+            files.append(path)
+
+    if session_stems:
+        normalized = [stem.strip() for stem in session_stems if stem.strip()]
+        files = [
+            path
+            for path in files
+            if _matches_session_stem(path, normalized)
+            or (_recording_stem(path) in normalized)
+        ]
+    return files
+
+
 def collect_reprocess_scope(
     archive: Path,
     source: Path,
@@ -134,31 +198,49 @@ def run_reprocess(
     if not args.source:
         raise ValueError("--reprocess requires --source")
 
-    archive = cfg.archive.expanduser().resolve()
     source = args.source.expanduser().resolve()
     if not source.exists() or not source.is_dir():
         print(f"❌ Source not found: {source}")
         return 1
 
+    archive = resolve_archive_root_for_source(cfg, source)
+    session_stems = getattr(args, "reprocess_sessions", None)
+    date_from = getattr(args, "reprocess_from", None)
+    date_to = getattr(args, "reprocess_to", None)
+
     scope = collect_reprocess_scope(
         archive,
         source,
         cfg,
-        date_from=getattr(args, "reprocess_from", None),
-        date_to=getattr(args, "reprocess_to", None),
-        session_stems=getattr(args, "reprocess_sessions", None),
+        date_from=date_from,
+        date_to=date_to,
+        session_stems=session_stems,
     )
+    stages = resolve_stages(args, cfg).without_copy()
+    if not scope and stages.llm and not stages.transcribe:
+        scope = collect_reprocess_transcript_scope(
+            archive,
+            source,
+            date_from=date_from,
+            date_to=date_to,
+            session_stems=session_stems,
+        )
     if not scope:
         print("❌ No recordings found to reprocess")
+        print(
+            "   Tip: audio may already be processed — try "
+            "`ideaforge --rename-summaries --source <folder>` for friendly markdown names, "
+            "or `--reprocess --llm-only` when transcripts remain."
+        )
         return 1
 
     folders = {path.parent.name for path in scope}
     folder_hint = folders.pop() if len(folders) == 1 else f"{len(folders)} date folders"
-    print(f"🔄 Reprocessing {len(scope)} file(s) from {folder_hint}")
+    kind = "transcript(s)" if scope[0].suffix.lower() == ".txt" else "file(s)"
+    print(f"🔄 Reprocessing {len(scope)} {kind} from {folder_hint}")
 
-    stages = resolve_stages(args, cfg).without_copy()
     process_source(
-        archive,
+        source,
         archive,
         cfg,
         stages,

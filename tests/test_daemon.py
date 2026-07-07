@@ -174,6 +174,7 @@ def test_daemon_rotates_logs_once_when_due(tmp_path, monkeypatch, capsys):
         now_fn=fake_now,
     )
     monkeypatch.setattr("ideaforge.log_util.DEFAULT_LOG_DIR", log_dir)
+    monkeypatch.setattr("ideaforge.daemon.load_last_rotated_date", lambda: None)
     monkeypatch.setattr(
         "ideaforge.daemon.find_recorder_mounts",
         lambda *args, **kwargs: [],

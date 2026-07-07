@@ -29,6 +29,7 @@ from ideaforge.status import (
     default_status_path,
     format_elapsed,
     load_status,
+    resolve_display_status,
 )
 
 DAEMON_LABEL = "com.ideaforge.daemon"
@@ -166,7 +167,7 @@ def collect_status_snapshot(cfg: IdeaForgeConfig) -> Dict[str, Any]:
     failures, failure_details, archive_devices = collect_archive_failures(cfg)
     mounts = find_recorder_mounts(cfg=cfg) if _is_darwin() else []
 
-    pipeline = load_status()
+    pipeline = resolve_display_status(load_status())
     daemon = check_daemon_health()
     menubar = check_menubar_health()
 
@@ -201,7 +202,7 @@ def collect_status_snapshot(cfg: IdeaForgeConfig) -> Dict[str, Any]:
 def format_status_report(cfg: IdeaForgeConfig) -> str:
     snapshot = collect_status_snapshot(cfg)
     archive = Path(snapshot["archive"])
-    pipeline = load_status()
+    pipeline = resolve_display_status(load_status())
     daemon = check_daemon_health()
     menubar = check_menubar_health()
     failures: List[str] = snapshot["pending_failures"]

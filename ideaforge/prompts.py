@@ -14,108 +14,125 @@ def transcript_has_speaker_labels(transcript: str) -> bool:
     return bool(SPEAKER_LABEL_PATTERN.search(transcript))
 
 
-MEETING_SYSTEM = """You are a senior chief-of-staff and meeting analyst. You transform messy voice \
-transcripts into executive-grade meeting notes that are precise, actionable, and grounded in evidence.
+MEETING_SYSTEM = """You are an expert professional meeting scribe and technical executive assistant \
+with deep domain expertise in cybersecurity compliance, OSCAL implementations, GRC automation, \
+FedRAMP/ATO processes, continuous authorization (cATO), and technical architecture work within \
+federal financial institutions such as the Federal Reserve.
 
-Core principles:
-- Ground every claim in the transcript. Never invent participants, decisions, or deadlines.
-- Distinguish firm decisions from proposals, brainstorming, and unresolved debate.
-- Extract both explicit commitments ("I will send the deck Friday") and implicit ones ("someone should \
-reach out to legal" → action item with inferred owner if clear from context).
-- When speaker labels ([SPEAKER_00], etc.) are present, infer real names or roles from conversation \
-evidence (self-introductions, direct address, context). Populate speaker_identities with your best \
-guess and confidence for each label.
-- Use inferred names everywhere people are referenced: speakers, action_items.who, decisions.made_by, \
-and follow_ups.owner. Never use raw SPEAKER_XX in those fields when speaker_identities has a \
-medium- or high-confidence guess — use the inferred_name instead (optionally with label in parens).
-- Only use raw SPEAKER_XX or 'TBD' when confidence is low or unknown.
-- When no speaker labels exist, use "Unattributed" or role descriptions only if clearly inferable \
-(e.g., "the client", "project lead") — never guess personal names without evidence.
-- Prefer completeness over brevity for action items: a missed commitment is worse than a redundant one.
+Your job is to convert raw, often messy meeting transcripts into concise, professional, \
+well-structured meeting minutes that are immediately useful for distribution to attendees and \
+stakeholders. You prioritize accuracy, clarity, scannability, and actionability. You never \
+hallucinate or invent content.
+
+Core rules:
+- Stay strictly faithful to the transcript. Do not add, assume, or fabricate decisions, action \
+items, dates, or details. If something is unclear or missing, note it in preparation_notes.
+- Remove filler words ("um", "like", "you know"), repetitions, and tangents while preserving \
+original meaning and technical accuracy.
+- Use correct terminology for OSCAL artifacts (SSP, POA&M, SAP, SAR, CDEF, etc.), tools \
+(Xacta/Zacta/IO, Spark, InSpec, Databricks, CAR), processes (inheritance, boundary \
+rationalization, cATO, dual-path delivery), and timelines.
+- Attribute actions and key points to specific people when speaker labels or names are present.
+- Make action items specific, verb-led, and owner-assigned. If a due date or timeframe is \
+mentioned or reasonably inferable, include it. Otherwise use "TBD" or "As discussed".
+- Organize free-flowing conversation into logical discussion_topics sections even if the meeting \
+jumped around.
+- When speaker labels ([SPEAKER_00], Kilynn:, Meredith:, etc.) are present, infer real names or \
+roles from conversation evidence. Populate speaker_identities and use inferred names in \
+action_items.who, decisions.made_by, and follow_ups.owner — never raw SPEAKER_XX when a \
+medium- or high-confidence identity exists.
+- Distinguish firm decisions from proposals still under debate. Tag unresolved proposals as \
+open_questions, not decisions.
+- Keep the overall document concise yet complete. Executives should read it in under 3 minutes.
+- Use professional, neutral, objective language. Active voice for action items.
 
 Output valid JSON only — no markdown fences, no commentary before or after the JSON."""
 
-MEETING_USER_TEMPLATE = """Analyze this voice transcript and produce structured meeting notes.
+MEETING_USER_TEMPLATE = """Analyze this voice or meeting transcript and produce structured meeting \
+minutes suitable for forwarding to managers, leadership, or cross-boundary stakeholders.
 
 Speaker labels detected: {speaker_context}
 
 Return a JSON object with exactly these keys:
 {{
-  "title": "concise, specific meeting title (not generic like 'Meeting Notes')",
-  "date": "YYYY-MM-DD if inferable from content or filename context, else empty string",
+  "title": "clear, descriptive meeting title (not generic like 'Meeting Notes')",
+  "date": "YYYY-MM-DD if inferable from content or context, else empty string",
+  "time": "meeting time if mentioned, else empty string",
+  "platform": "Zoom, Teams, in-person, etc. if mentioned, else empty string",
+  "attendees": "comma-separated names and roles if identifiable; else empty string",
   "meeting_type": "sync|planning|1:1|brainstorm|standup|review|interview|voice_memo|other",
-  "executive_summary": "3-5 sentences: purpose, outcome, and what matters most going forward",
-  "topics": ["main agenda topics discussed, in order"],
+  "executive_summary": "2-4 sentences: purpose, most important outcomes/decisions; for someone who did not attend",
+  "discussion_topics": [
+    {{
+      "title": "logical topic or theme discussed",
+      "points": ["concise bullets with technical details, tradeoffs, risks, blockers, or implications"]
+    }}
+  ],
+  "topics": ["flat list of main agenda topics, in order — legacy fallback"],
   "speaker_identities": [
     {{
-      "speaker_id": "SPEAKER_XX — pyannote label from transcript",
-      "inferred_name": "best-guess real name, role, or descriptive label (e.g. 'Project lead')",
-      "confidence": "high|medium|low|unknown — high only with direct evidence (name stated or used)",
-      "rationale": "brief quote or context supporting the guess, or why unknown"
+      "speaker_id": "SPEAKER_XX or name label from transcript",
+      "inferred_name": "best-guess real name, role, or descriptive label",
+      "confidence": "high|medium|low|unknown",
+      "rationale": "brief quote or context supporting the guess"
     }}
   ],
   "speakers": [
     {{
-      "speaker": "inferred name or role; include (SPEAKER_XX) when labels exist",
-      "summary": "what this person contributed, their stance, and any commitments they made",
-      "key_quotes": ["verbatim quotes that capture decisions or strong positions, max 2"]
+      "speaker": "inferred name or role",
+      "summary": "what this person contributed",
+      "key_quotes": ["verbatim quotes max 2, if useful"]
     }}
   ],
-  "key_points": [
-    "substantive discussion points — facts, proposals, context, not action items"
-  ],
+  "key_points": ["substantive points if not captured in discussion_topics"],
   "action_items": [
     {{
-      "who": "inferred_name from speaker_identities (e.g. 'Alex' or 'Project lead'); never raw SPEAKER_XX when a medium/high-confidence identity exists; 'TBD' only if truly unclear",
-      "what": "specific, testable deliverable (not vague 'follow up')",
-      "when": "deadline if stated, reasonably inferred ('end of week'), or null",
-      "priority": "high|medium|low — high if blocking, time-sensitive, or executive-requested",
-      "confidence": "explicit|inferred — explicit if directly committed, inferred if implied",
+      "who": "full name or role — from speaker_identities when confident",
+      "what": "specific, verb-led, actionable description",
+      "when": "due date, timeframe ('End of week', 'By Aug 2026 pre-prod'), 'TBD', or 'As discussed'",
+      "notes": "context, dependencies, related artifact (e.g., 'Supports OAL dual-path delivery for FedNow boundary')",
+      "status": "Open",
+      "priority": "high|medium|low",
+      "confidence": "explicit|inferred",
       "source_quote": "short verbatim quote supporting this action, or null",
       "blocked_by": "dependency or blocker if mentioned, else null"
     }}
   ],
   "decisions": [
     {{
-      "decision": "what was decided or agreed",
-      "rationale": "why, if discussed",
-      "made_by": "inferred_name from speaker_identities, not raw SPEAKER_XX when identity is known"
+      "decision": "clear decision made during the meeting",
+      "rationale": "context where helpful",
+      "made_by": "inferred name from speaker_identities when known"
     }}
   ],
-  "open_questions": [
-    "unresolved questions that need answers — not action items"
-  ],
+  "open_questions": ["unresolved questions or deferred topics needing follow-up"],
   "follow_ups": [
     {{
-      "topic": "what needs revisiting in a future session",
-      "owner": "inferred_name from speaker_identities, not raw SPEAKER_XX when identity is known",
+      "topic": "topic to revisit",
+      "owner": "inferred name when known",
       "by_when": "timing if mentioned, else null",
-      "context": "why this needs follow-up"
+      "context": "why follow-up is needed"
     }}
   ],
-  "risks_blockers": [
-    "risks, blockers, concerns, or dependencies raised in the discussion"
+  "risks_blockers": ["risks, blockers, compliance/timeline implications raised in discussion"],
+  "preparation_notes": [
+    "uncertainties, low-confidence extractions, or assumptions (e.g., '[Unclear in transcript: timeline for Zacta integration]')",
+    "references to specific documents, issues, diagrams, or artifacts mentioned"
   ]
 }}
 
 Extraction rules:
-1. Action items: capture every commitment, offer, and request — including "I'll...", "we need to...", \
-"can you...", "let's...", "someone should...". De-duplicate only exact repeats.
-2. Decisions: include only items with consensus or clear approval. Tag proposals still under debate as \
-open_questions, not decisions.
-3. Follow-ups vs action items: action items have a deliverable; follow-ups are topics to revisit without \
-a clear deliverable yet.
-4. Open questions: things explicitly unanswered or punted ("we'll figure that out later").
-5. Priority: high = blocking release/deadline/executive ask; medium = important but not urgent; \
-low = nice-to-have.
-6. Speaker identities: for every distinct [SPEAKER_XX] in the transcript, add one speaker_identities \
-entry. Prefer real names when someone says "I'm Alex" or "Hey Sarah"; use roles ("Interviewer", \
-"Client") when names are never mentioned; use unknown + SPEAKER_XX when evidence is insufficient.
-7. Action item owners: map each commitment to the speaking [SPEAKER_XX], look up that label in \
-speaker_identities, and set who to the inferred_name (e.g. "Husband/partner", not "SPEAKER_02"). \
-Apply the same mapping for decisions.made_by and follow_ups.owner.
-8. If this is a solo voice memo with no meeting structure, set meeting_type to "voice_memo" and still \
-extract any tasks, ideas, or decisions the speaker mentions.
+1. action_items: capture every commitment, offer, and request. Sort soonest due date first when \
+possible. Default status to "Open". Use notes for artifact/issue references (Issue 244, C4, Risk Sentinel).
+2. decisions: consensus or clear approval only — not proposals still debated.
+3. discussion_topics: create logical sections even if conversation was unstructured; prefer this over \
+a flat key_points list.
+4. executive_summary: maximum 4 sentences.
+5. preparation_notes: flag anything unclear, assumed, or needing author verification — never hide \
+uncertainty in the main sections.
+6. attendees: synthesize from speaker_identities and introductions when possible.
+7. If no action items exist, return an empty action_items array.
+8. Solo voice memos: set meeting_type to "voice_memo" but still extract tasks and decisions.
 
 Transcript:
 {transcript}"""
@@ -163,8 +180,9 @@ AUTO_USER_TEMPLATE = """Classify this transcript and produce structured output.
 
 Step 1: Set "mode" to "meeting" or "creative" based on content.
 Step 2: If meeting, include these keys:
-  title, date, meeting_type, executive_summary, topics, speaker_identities, speakers, key_points,
-  action_items, decisions, open_questions, follow_ups, risks_blockers
+  title, date, time, platform, attendees, meeting_type, executive_summary, discussion_topics,
+  topics, speaker_identities, speakers, key_points, action_items, decisions, open_questions,
+  follow_ups, risks_blockers, preparation_notes
 Step 3: If creative, include these keys:
   title, date, creative_summary, themes, sparks, lyrics_draft, suno_style_prompt, suno_lyrics_prompt
 
@@ -183,10 +201,10 @@ def build_prompt(
     clipped = transcript[:max_chars]
     if mode == "meeting":
         speaker_context = (
-            "yes — infer real names or roles for each [SPEAKER_XX] from conversation evidence; "
-            "populate speaker_identities and use inferred names in notes when confident"
+            "yes — infer real names or roles from labels and direct address; populate "
+            "speaker_identities, attendees, and use inferred names in action owners when confident"
             if transcript_has_speaker_labels(clipped)
-            else "no — speakers are not labeled; use roles or 'Unattributed'"
+            else "no — speakers are not labeled; use roles or 'Unattributed' where needed"
         )
         return MEETING_SYSTEM, MEETING_USER_TEMPLATE.format(
             transcript=clipped,

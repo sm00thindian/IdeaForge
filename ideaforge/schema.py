@@ -15,6 +15,14 @@ class ActionItem:
     confidence: Optional[str] = None  # explicit | inferred
     source_quote: Optional[str] = None
     blocked_by: Optional[str] = None
+    notes: Optional[str] = None
+    status: Optional[str] = "Open"
+
+
+@dataclass
+class DiscussionTopic:
+    title: str
+    points: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -55,7 +63,12 @@ class MeetingNotes:
     date: str
     executive_summary: str
     meeting_type: Optional[str] = None
+    time: Optional[str] = None
+    platform: Optional[str] = None
+    attendees: Optional[str] = None
     topics: List[str] = field(default_factory=list)
+    discussion_topics: List[DiscussionTopic] = field(default_factory=list)
+    preparation_notes: List[str] = field(default_factory=list)
     speaker_identities: List[SpeakerIdentity] = field(default_factory=list)
     speakers: List[SpeakerContribution] = field(default_factory=list)
     key_points: List[str] = field(default_factory=list)
@@ -82,107 +95,117 @@ class MeetingNotes:
                 "",
             ])
         lines.extend([
-            f"# {self.title}",
+            f"# Meeting Minutes: {self.title}",
             "",
-            f"**Date:** {self.date or '—'}",
+            f"**Date:** {self.date or 'TBD'}",
+            f"**Time:** {self.time or 'TBD'}",
+            f"**Platform:** {self.platform or 'TBD'}",
+            f"**Attendees:** {self.attendees or 'See transcript for participants'}",
         ])
         if recording_source:
             lines.append(f"**Recording date source:** {recording_source}")
-        if self.meeting_type:
-            lines.append(f"**Type:** {self.meeting_type}")
         lines += ["", "## Executive Summary", "", self.executive_summary, ""]
 
-        if self.topics:
-            lines += ["## Topics", ""]
-            for topic in self.topics:
-                lines.append(f"- {topic}")
-            lines.append("")
-
-        if self.speaker_identities:
-            lines += ["## Speaker Identities", ""]
-            lines.append("| Label | Inferred Name | Confidence | Rationale |")
-            lines.append("|-------|---------------|------------|-----------|")
-            for identity in self.speaker_identities:
-                lines.append(
-                    f"| {identity.speaker_id} | {identity.inferred_name} | "
-                    f"{identity.confidence} | {identity.rationale or '—'} |"
-                )
-            lines.append("")
-
-        if self.speakers:
-            lines += ["## Speakers & Contributions", ""]
-            for sp in self.speakers:
-                lines.append(f"### {sp.speaker}")
-                lines.append(sp.summary)
-                for quote in sp.key_quotes:
-                    lines.append(f"> \"{quote}\"")
-                lines.append("")
-
-        if self.key_points:
-            lines += ["## Key Points", ""]
-            for point in self.key_points:
-                lines.append(f"- {point}")
-            lines.append("")
-
+        lines += ["## Action Items", ""]
         if self.action_items:
-            lines += ["## Action Items", ""]
-            lines.append("| Who | What | When | Priority | Confidence |")
-            lines.append("|-----|------|------|----------|------------|")
-            for item in self.action_items:
+            lines.append(
+                "| # | Action Item | Owner | Due Date / Timeframe | "
+                "Notes / Context / Dependencies | Status |"
+            )
+            lines.append(
+                "|---|-------------|-------|----------------------|"
+                "--------------------------------|--------|"
+            )
+            for index, item in enumerate(self.action_items, start=1):
+                notes_parts = [
+                    part
+                    for part in (
+                        item.notes,
+                        item.blocked_by,
+                        item.source_quote,
+                    )
+                    if part
+                ]
+                notes = " — ".join(notes_parts) if notes_parts else "—"
                 lines.append(
-                    f"| {item.who} | {item.what} | {item.when or '—'} | "
-                    f"{item.priority or '—'} | {item.confidence or '—'} |"
+                    f"| {index} | {item.what} | {item.who} | "
+                    f"{item.when or 'TBD'} | {notes} | {item.status or 'Open'} |"
                 )
-            lines.append("")
-            quoted = [i for i in self.action_items if i.source_quote or i.blocked_by]
-            if quoted:
-                lines += ["### Action Item Details", ""]
-                for item in quoted:
-                    lines.append(f"- **{item.who}:** {item.what}")
-                    if item.source_quote:
-                        lines.append(f"  - Source: \"{item.source_quote}\"")
-                    if item.blocked_by:
-                        lines.append(f"  - Blocked by: {item.blocked_by}")
-                lines.append("")
+        else:
+            lines.append(
+                "No explicit action items were captured in the transcript."
+            )
+        lines.append("")
 
         if self.decisions:
-            lines += ["## Decisions", ""]
+            lines += ["## Key Decisions", ""]
             for dec in self.decisions:
                 if isinstance(dec, Decision):
-                    lines.append(f"- **{dec.decision}**")
+                    bullet = dec.decision
                     if dec.rationale:
-                        lines.append(f"  - Rationale: {dec.rationale}")
+                        bullet = f"{bullet} ({dec.rationale})"
                     if dec.made_by:
-                        lines.append(f"  - Driven by: {dec.made_by}")
+                        bullet = f"{bullet} — {dec.made_by}"
+                    lines.append(f"- {bullet}")
                 else:
                     lines.append(f"- {dec}")
             lines.append("")
 
+        discussion = self.discussion_topics
+        if not discussion and (self.topics or self.key_points):
+            discussion = [
+                DiscussionTopic(title=topic, points=[])
+                for topic in self.topics
+            ]
+            if self.key_points and discussion:
+                discussion[0].points.extend(self.key_points)
+            elif self.key_points:
+                discussion = [DiscussionTopic(title="Discussion", points=self.key_points)]
+
+        if discussion:
+            lines += ["## Discussion Summary", ""]
+            for topic in discussion:
+                lines.append(f"### {topic.title}")
+                for point in topic.points:
+                    lines.append(f"- {point}")
+                lines.append("")
+
+        parking_lot: List[str] = list(self.open_questions)
+        for fu in self.follow_ups:
+            if isinstance(fu, FollowUp):
+                label = fu.topic
+                if fu.owner:
+                    label = f"{label} ({fu.owner})"
+                if fu.by_when:
+                    label = f"{label} — by {fu.by_when}"
+                if fu.context:
+                    label = f"{label}: {fu.context}"
+                parking_lot.append(label)
+            else:
+                parking_lot.append(str(fu))
+
+        if parking_lot:
+            lines += ["## Open Questions / Parking Lot Items", ""]
+            for item in parking_lot:
+                lines.append(f"- {item}")
+            lines.append("")
+
         if self.risks_blockers:
-            lines += ["## Risks & Blockers", ""]
+            if not discussion:
+                lines += ["## Discussion Summary", ""]
+            lines += ["### Risks, Blockers, and Implications", ""]
             for risk in self.risks_blockers:
                 lines.append(f"- {risk}")
             lines.append("")
 
-        if self.open_questions:
-            lines += ["## Open Questions", ""]
-            for q in self.open_questions:
-                lines.append(f"- {q}")
+        if self.preparation_notes:
+            lines += ["## Preparation Notes (for the minutes author)", ""]
+            for note in self.preparation_notes:
+                lines.append(f"- {note}")
             lines.append("")
 
-        if self.follow_ups:
-            lines += ["## Follow-ups", ""]
-            for fu in self.follow_ups:
-                if isinstance(fu, FollowUp):
-                    owner = f" ({fu.owner})" if fu.owner else ""
-                    when = f" — by {fu.by_when}" if fu.by_when else ""
-                    lines.append(f"- **{fu.topic}**{owner}{when}")
-                    if fu.context:
-                        lines.append(f"  - {fu.context}")
-                else:
-                    lines.append(f"- {fu}")
-            lines.append("")
-
+        lines.append("**End of Minutes**")
+        lines.append("")
         return "\n".join(lines).strip() + "\n"
 
 

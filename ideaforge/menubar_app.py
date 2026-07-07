@@ -29,6 +29,7 @@ from ideaforge.status import (
     format_elapsed,
     load_status,
     menu_bar_title,
+    resolve_display_status,
 )
 
 LOCK_PATH = Path.home() / "Library" / "Application Support" / "IdeaForge" / "menubar.lock"
@@ -158,7 +159,7 @@ class IdeaForgeMenuBarApp:
         self.refresh(None)
 
     def refresh(self, _) -> None:
-        status = load_status()
+        status = resolve_display_status(load_status())
         failure_count = pending_failure_count(_load_config())
         title = _menu_title_with_failures(status, failure_count)
         # Title appears beside the icon on the same menu bar item.

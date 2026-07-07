@@ -1,10 +1,14 @@
 """Tests for pipeline status reporting."""
 
+import os
+from unittest.mock import patch
+
 from ideaforge.pipeline import PipelineStages
 from ideaforge.status import (
     STATE_COMPLETE,
     STATE_PROCESSING,
     STATE_SETTLING,
+    STATE_WATCHING,
     STEP_ACTIVE,
     STEP_DONE,
     Stage,
@@ -12,8 +16,13 @@ from ideaforge.status import (
     StepId,
     StepLabel,
     build_step_plan,
+    is_status_owned_by_other,
     load_status,
     menu_bar_title,
+    resolve_display_status,
+    save_status,
+    PipelineStatus,
+    StatusStep,
 )
 
 
@@ -103,6 +112,120 @@ def test_status_reporter_context_activation(tmp_path):
     loaded = load_status(path)
     assert loaded.state == STATE_PROCESSING
     assert loaded.stage == Stage.SUMMARIZING
+
+
+def test_daemon_does_not_overwrite_foreign_processing_status(tmp_path):
+    path = tmp_path / "status.json"
+    cli_pid = os.getpid() + 50000
+    save_status(
+        PipelineStatus(
+            state=STATE_PROCESSING,
+            device="2026-07-02",
+            sessions_total=3,
+            stage=Stage.DIARIZING,
+            detail="R2014-10-27-13-09-15_merged.wav",
+            owner_pid=cli_pid,
+        ),
+        path,
+    )
+    daemon = StatusReporter(path)
+    with patch("ideaforge.status._pid_alive", return_value=True):
+        daemon.set_watching(device="IdeaForge")
+    loaded = load_status(path)
+    assert loaded.state == STATE_PROCESSING
+    assert loaded.stage == Stage.DIARIZING
+    assert loaded.owner_pid == cli_pid
+
+
+def test_daemon_can_watch_after_foreign_owner_completes(tmp_path):
+    path = tmp_path / "status.json"
+    save_status(
+        PipelineStatus(
+            state=STATE_COMPLETE,
+            device="2026-07-02",
+            stage=Stage.COMPLETE,
+            detail="3 session(s) processed",
+        ),
+        path,
+    )
+    daemon = StatusReporter(path)
+    with patch("ideaforge.status.find_cli_pipeline_pids", return_value=[]):
+        daemon.set_watching()
+    loaded = load_status(path)
+    assert loaded.state == STATE_WATCHING
+
+
+def test_daemon_skips_watching_when_cli_pipeline_running(tmp_path):
+    path = tmp_path / "status.json"
+    save_status(PipelineStatus(state=STATE_WATCHING), path)
+    daemon = StatusReporter(path)
+    with patch("ideaforge.status.find_cli_pipeline_pids", return_value=[4242]):
+        daemon.set_watching(device="IdeaForge")
+    loaded = load_status(path)
+    assert loaded.state == STATE_WATCHING
+
+
+def test_resolve_display_status_detects_cli_pipeline():
+    status = PipelineStatus(state=STATE_WATCHING)
+    enriched = PipelineStatus(
+        state=STATE_PROCESSING,
+        device="2026-07-02",
+        session=2,
+        sessions_total=3,
+        stage=Stage.DIARIZING,
+        detail="R2014-10-27-14-31-06_merged",
+        pipeline="transcribe → diarize → llm",
+        elapsed_seconds=120.0,
+        steps=[
+            StatusStep(id=StepId.TRANSCRIBE, label=StepLabel.TRANSCRIBE, status=STEP_DONE),
+            StatusStep(id=StepId.DIARIZE, label=StepLabel.DIARIZE, status=STEP_ACTIVE),
+        ],
+    )
+    with patch("ideaforge.status.find_cli_pipeline_pids", return_value=[4242]):
+        with patch("ideaforge.status._status_from_cli_pipeline", return_value=enriched):
+            shown = resolve_display_status(status)
+    assert shown.state == STATE_PROCESSING
+    assert shown.stage == Stage.DIARIZING
+    assert shown.sessions_total == 3
+    assert menu_bar_title(shown) == "⟳ Diarizing 2/3"
+
+
+def test_parse_ps_elapsed_accepts_macos_formats():
+    from ideaforge.status import _parse_ps_elapsed
+
+    assert _parse_ps_elapsed("35:42") == 35 * 60 + 42
+    assert _parse_ps_elapsed("01:23:45") == 1 * 3600 + 23 * 60 + 45
+    assert _parse_ps_elapsed("02-03:45:30") == 2 * 86400 + 3 * 3600 + 45 * 60 + 30
+
+
+def test_parse_cli_log_progress_reads_stage_and_sessions():
+    log_text = """
+   Found 38 audio file(s) in 3 session(s)
+   Pipeline: transcribe → diarize → llm
+    ✓ Markdown saved: R2014-10-27-13-09-15_summary.md
+    🎙️  Transcribing R2014-10-27-14-31-06_merged.wav ...
+    🗣️  Running pyannote speaker diarization (min=1, max=6) ...
+"""
+    from ideaforge.status import _parse_cli_log_progress
+
+    parsed = _parse_cli_log_progress(log_text)
+    assert parsed["sessions_total"] == 3
+    assert parsed["session"] == 2
+    assert parsed["stage"] == Stage.DIARIZING
+    assert parsed["recording"] == "R2014-10-27-14-31-06_merged"
+
+
+def test_is_status_owned_by_other_ignores_same_pid(tmp_path):
+    path = tmp_path / "status.json"
+    save_status(
+        PipelineStatus(
+            state=STATE_PROCESSING,
+            owner_pid=os.getpid(),
+        ),
+        path,
+    )
+    with patch("ideaforge.status.find_cli_pipeline_pids", return_value=[]):
+        assert is_status_owned_by_other(path) is False
 
 
 def test_stage_constants_are_unique():
