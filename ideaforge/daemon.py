@@ -24,6 +24,7 @@ from ideaforge.ingest import (
     get_audio_files,
     ingest_device_recordings,
     load_processed_log,
+    prune_old_merged_wavs,
 )
 from ideaforge.pipeline import PipelineStages, resolve_stages
 from ideaforge.notify import ProcessResult, notify_process_complete
@@ -243,7 +244,7 @@ class RecorderWatcher:
         self._idle_announced.add(mount_key)
 
     def _maybe_rotate_logs(self) -> None:
-        """Rotate all IdeaForge logs once per day after the configured local time."""
+        """Rotate logs and prune old merged WAVs once per day after scheduled time."""
         if not self.cfg.daemon_log_rotate_enabled:
             return
         now = self._now_fn()
@@ -265,6 +266,17 @@ class RecorderWatcher:
             print(
                 f"🗂️  Daily log rotation ({now.strftime('%H:%M')} local): "
                 f"{names}"
+            )
+        pruned = prune_old_merged_wavs(
+            self.cfg.archive,
+            retain_days=self.cfg.daemon_merged_wav_retain_days,
+            now=now,
+        )
+        if pruned:
+            days = self.cfg.daemon_merged_wav_retain_days
+            print(
+                f"🗑️  Pruned {len(pruned)} merged WAV(s) older than "
+                f"{days} day(s)"
             )
 
     def tick(self) -> Optional[ProcessResult]:

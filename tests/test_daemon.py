@@ -1,10 +1,10 @@
 """Tests for USB recorder daemon watcher."""
 
+import argparse
+import os
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock
-
-import argparse
 
 from ideaforge.config import IdeaForgeConfig
 from ideaforge.daemon import DeviceSnapshot, RecorderWatcher, snapshot_device
@@ -152,6 +152,11 @@ def test_daemon_rotates_logs_once_when_due(tmp_path, monkeypatch, capsys):
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
     (log_dir / "daemon.log").write_text("old\n", encoding="utf-8")
+    archive = tmp_path / "archive"
+    old_merged = archive / "2026-06-20" / "R2026-06-20-09-00-00_merged.wav"
+    old_merged.parent.mkdir(parents=True)
+    old_merged.write_bytes(b"\x00" * 512)
+    os.utime(old_merged, (1_000_000.0, 1_000_000.0))  # far in the past
 
     times = [
         datetime(2026, 7, 2, 2, 5, 0),
@@ -161,10 +166,20 @@ def test_daemon_rotates_logs_once_when_due(tmp_path, monkeypatch, capsys):
     def fake_now():
         return times.pop(0) if times else datetime(2026, 7, 2, 2, 15, 0)
 
+    # Patch before constructing the watcher — __init__ loads last-rotated date.
+    monkeypatch.setattr("ideaforge.log_util.DEFAULT_LOG_DIR", log_dir)
+    monkeypatch.setattr("ideaforge.daemon.load_last_rotated_date", lambda: None)
+    monkeypatch.setattr(
+        "ideaforge.daemon.find_recorder_mounts",
+        lambda *args, **kwargs: [],
+    )
+
     cfg = IdeaForgeConfig(
+        archive=archive,
         daemon_log_rotate_enabled=True,
         daemon_log_rotate_hour=2,
         daemon_log_rotate_minute=0,
+        daemon_merged_wav_retain_days=3,
     )
     watcher = RecorderWatcher(
         cfg=cfg,
@@ -173,18 +188,14 @@ def test_daemon_rotates_logs_once_when_due(tmp_path, monkeypatch, capsys):
         process_fn=MagicMock(return_value=ProcessResult()),
         now_fn=fake_now,
     )
-    monkeypatch.setattr("ideaforge.log_util.DEFAULT_LOG_DIR", log_dir)
-    monkeypatch.setattr("ideaforge.daemon.load_last_rotated_date", lambda: None)
-    monkeypatch.setattr(
-        "ideaforge.daemon.find_recorder_mounts",
-        lambda *args, **kwargs: [],
-    )
 
     watcher._maybe_rotate_logs()
     watcher._maybe_rotate_logs()
     out = capsys.readouterr().out
     assert out.count("Daily log rotation") == 1
+    assert out.count("Pruned 1 merged WAV") == 1
     assert (log_dir / "daemon.log.1").read_text(encoding="utf-8") == "old\n"
+    assert not old_merged.exists()
 
 
 def test_device_snapshot_equality():

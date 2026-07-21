@@ -2,6 +2,12 @@
 
 All notable changes to IdeaForge are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- **Merged WAV retention** — Daily log rotation also prunes leftover `*_merged.wav` artifacts older than `daemon.merged_wav_retain_days` (default 3; `0` disables).
+
 ## [1.1.0] - 2026-06-30
 
 ### Added

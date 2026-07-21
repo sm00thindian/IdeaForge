@@ -221,7 +221,8 @@ ideaforge --daemon
 # Restart after code or config changes
 launchctl kickstart -k gui/$(id -u)/com.ideaforge.daemon
 
-# Watch logs (auto-rotated at 10 MiB — keeps daemon.log.1 … .log.3)
+# Watch logs (auto-rotated at 10 MiB — keeps daemon.log.1 … .log.3;
+# daily rotation also prunes leftover *_merged.wav older than merged_wav_retain_days, default 3)
 tail -f ~/Library/Logs/ideaforge/daemon.log
 
 # Stop (keeps install — restart with install-daemon.sh)
@@ -458,7 +459,7 @@ Everything lands under the archive root from config (default `~/IdeaForge`). Wit
 
 **Sessions vs chunks:** Consecutive recorder splits (same meeting, gap ≤ `chunk_gap_seconds`, each chunk ≥ `merge_min_chunk_seconds`) merge into one session. The session stem is the **first chunk's filename**; outputs use that stem even when several `R*.WAV` files were merged.
 
-**Derived files:** `*_merged.WAV` files are pipeline artifacts — they are not re-ingested or re-processed as source audio.
+**Derived files:** `*_merged.WAV` files are pipeline artifacts — they are not re-ingested or re-processed as source audio. The daemon prunes leftovers older than `merged_wav_retain_days` (default 3) during daily log rotation; set to `0` to keep them.
 
 **Runtime state (outside the archive):**
 

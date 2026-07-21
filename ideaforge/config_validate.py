@@ -68,6 +68,7 @@ SECTION_KEYS: Dict[str, Set[str]] = {
         "log_rotate_hour",
         "log_rotate_minute",
         "log_rotate_backups",
+        "merged_wav_retain_days",
     },
     "export": {
         "reminders",
@@ -151,6 +152,8 @@ def validate_config_values(cfg: IdeaForgeConfig) -> List[str]:
         issues.append("daemon.log_rotate_minute must be between 0 and 59")
     if cfg.daemon_log_rotate_backups < 1:
         issues.append("daemon.log_rotate_backups must be >= 1")
+    if cfg.daemon_merged_wav_retain_days < 0:
+        issues.append("daemon.merged_wav_retain_days must be >= 0 (0 disables prune)")
     if cfg.max_parallel_sessions < 1:
         issues.append("processing.max_parallel_sessions must be >= 1")
     if cfg.min_file_size_bytes < 0:

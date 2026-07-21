@@ -143,6 +143,7 @@ class IdeaForgeConfig:
     daemon_log_rotate_hour: int = 2
     daemon_log_rotate_minute: int = 0
     daemon_log_rotate_backups: int = 3
+    daemon_merged_wav_retain_days: int = 3
     notify_on_failure: bool = False
     export_reminders: bool = False
     export_reminders_list: str = "IdeaForge"
@@ -285,6 +286,8 @@ class IdeaForgeConfig:
                 cfg.daemon_log_rotate_minute = int(daemon["log_rotate_minute"])
             if "log_rotate_backups" in daemon:
                 cfg.daemon_log_rotate_backups = int(daemon["log_rotate_backups"])
+            if "merged_wav_retain_days" in daemon:
+                cfg.daemon_merged_wav_retain_days = int(daemon["merged_wav_retain_days"])
         if "export" in data:
             export = data["export"]
             cfg.export_reminders = bool(export.get("reminders", cfg.export_reminders))

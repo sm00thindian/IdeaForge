@@ -33,6 +33,13 @@ def test_validate_config_rejects_invalid_backend():
     assert "llm.backend" in str(exc.value)
 
 
+def test_validate_config_rejects_negative_merged_wav_retain_days():
+    cfg = IdeaForgeConfig(daemon_merged_wav_retain_days=-1)
+    with pytest.raises(ConfigValidationError) as exc:
+        validate_config(cfg)
+    assert "merged_wav_retain_days" in str(exc.value)
+
+
 def test_validate_config_file_ok(tmp_path: Path):
     config = tmp_path / "config.toml"
     config.write_text(

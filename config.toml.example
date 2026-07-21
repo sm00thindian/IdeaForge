@@ -73,6 +73,7 @@ log_rotate_enabled = true   # daily rotation when daemon is idle
 log_rotate_hour = 2         # local time (0–23); default 2:00 AM
 log_rotate_minute = 0
 log_rotate_backups = 3      # keep .log.1 … .log.N per file
+merged_wav_retain_days = 3  # prune leftover *_merged.wav during daily rotation (0 = off)
 
 # Menu bar progress UI (optional):
 #   ./scripts/install-menubar.sh

@@ -39,6 +39,51 @@ def is_derived_audio(path: Path) -> bool:
     return path.stem.endswith("_merged")
 
 
+def iter_merged_wav_files(archive_root: Path) -> List[Path]:
+    """Find ``*_merged.wav`` pipeline artifacts under the archive root."""
+    if not archive_root.is_dir():
+        return []
+    found: List[Path] = []
+    for path in archive_root.rglob("*"):
+        if not path.is_file():
+            continue
+        if path.suffix.lower() != ".wav":
+            continue
+        if is_derived_audio(path):
+            found.append(path)
+    return sorted(found)
+
+
+def prune_old_merged_wavs(
+    archive_root: Path,
+    *,
+    retain_days: int = 3,
+    now: Optional[datetime] = None,
+) -> List[Path]:
+    """
+    Delete leftover ``*_merged.wav`` files older than ``retain_days``.
+
+    These multi-chunk merge artifacts are large and unneeded once notes are
+    verified. ``retain_days <= 0`` disables pruning. Returns paths removed.
+    """
+    if retain_days <= 0:
+        return []
+    if not archive_root.is_dir():
+        return []
+
+    cutoff = (now or datetime.now()).timestamp() - (retain_days * 86_400)
+    removed: List[Path] = []
+    for path in iter_merged_wav_files(archive_root):
+        try:
+            if path.stat().st_mtime >= cutoff:
+                continue
+            path.unlink()
+            removed.append(path)
+        except OSError:
+            print(f"   ⚠️  Could not prune merged audio: {path}")
+    return removed
+
+
 def get_audio_files(
     source: Path,
     extensions: Set[str],
