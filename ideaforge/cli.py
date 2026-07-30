@@ -25,33 +25,62 @@ def build_parser() -> argparse.ArgumentParser:
         prog="ideaforge",
         description="IdeaForge — Local-first pipeline for USB voice recorders",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""Examples:
-  ideaforge --auto-source                          # full pipeline
-  ideaforge --daemon                               # watch for USB recorder
-  ideaforge --source ~/IdeaForge/2026-06-27 --llm-only --force
-  ideaforge --source ~/IdeaForge/2026-06-27 --diarize-only --no-copy
-  ideaforge --auto-source --transcribe-only
-  ideaforge --auto-source --ingest-only
-  ideaforge --source ~/IdeaForge --retry-failed
-  ideaforge --reprocess --source ~/IdeaForge/2026-06-27
-  ideaforge --reprocess --source ~/IdeaForge --from 2026-06-25 --to 2026-06-30
-  ideaforge device clock
+        epilog="""Primary commands:
+  ideaforge process --source PATH          # preferred one-shot pipeline
+  ideaforge --daemon                       # watch for USB recorder
+  ideaforge --doctor                       # health check
+  ideaforge --status [--watch]             # live pipeline status
   ideaforge --validate-config
-  ideaforge --status
-  ideaforge --status --watch
-  ideaforge fleet
-  ideaforge fleet --serve --port 8765
-  ideaforge speakers list
-  ideaforge sync --source ~/IdeaForge/z28/2026-06-30 --dry-run
-  ideaforge speakers register R2026-06-30-10-00-00 SPEAKER_00 "Alex"
-  ideaforge speakers register R2026-06-30-10-00-00 SPEAKER_00 "Kilynn"
-  ideaforge sync --source ~/IdeaForge/z28/2026-06-30 --dry-run
-  ideaforge --source /Volumes/Z29 --mode meeting --diarize
+
+Also useful:
+  ideaforge process --source ~/IdeaForge/2026-06-27 --llm-only --force
+  ideaforge --regenerate-creative --source ARCHIVE --session STEM
+  ideaforge --reprocess --source ~/IdeaForge/2026-06-27
+  ideaforge --source ~/IdeaForge --retry-failed
+  ideaforge device clock
+  ideaforge fleet | fleet --serve
+  ideaforge speakers list | register …
+  ideaforge sync --source PATH --dry-run
+
+Root-level flags (--source, --auto-source, --llm-only, …) remain supported
+as aliases of the same pipeline; prefer ``process`` for new scripts.
 """,
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
     subparsers = parser.add_subparsers(dest="command")
+
+    process_parser = subparsers.add_parser(
+        "process",
+        help="Run the pipeline on a source folder or mount (preferred over bare flags)",
+    )
+    process_parser.add_argument(
+        "--source",
+        type=Path,
+        required=True,
+        help="Mounted recorder, date folder, or archive path",
+    )
+    process_parser.add_argument("--force", action="store_true")
+    process_parser.add_argument("--llm-only", action="store_true")
+    process_parser.add_argument("--transcribe-only", action="store_true")
+    process_parser.add_argument("--diarize-only", action="store_true")
+    process_parser.add_argument("--ingest-only", action="store_true")
+    process_parser.add_argument("--no-copy", action="store_true")
+    process_parser.add_argument("--no-llm", action="store_true")
+    process_parser.add_argument("--no-transcribe", action="store_true")
+    process_parser.add_argument("--diarize", action="store_true")
+    process_parser.add_argument("--retry-failed", action="store_true")
+    process_parser.add_argument(
+        "--mode",
+        default=None,
+        choices=["meeting", "creative", "auto"],
+    )
+    process_parser.add_argument(
+        "--output-format",
+        default=None,
+        choices=["md", "json", "both"],
+    )
+
     device_parser = subparsers.add_parser("device", help="USB recorder utilities")
     device_subparsers = device_parser.add_subparsers(dest="device_action", required=True)
     device_clock_parser = device_subparsers.add_parser(
@@ -417,11 +446,61 @@ def resolve_source(args: argparse.Namespace, cfg: IdeaForgeConfig) -> Optional[P
     return None
 
 
+def _ensure_pipeline_arg_defaults(args: argparse.Namespace) -> None:
+    """Fill root-pipeline attributes missing when invoked via ``process`` subcommand."""
+    defaults = {
+        "auto_source": False,
+        "daemon": False,
+        "list_only": False,
+        "detect": False,
+        "device_clock": False,
+        "validate_config": False,
+        "doctor": False,
+        "status": False,
+        "status_json": False,
+        "watch": False,
+        "watch_interval": 2.0,
+        "reprocess": False,
+        "regenerate_creative": False,
+        "rename_summaries": False,
+        "migrate_layout": False,
+        "dry_run": False,
+        "export_only": False,
+        "export_reminders": False,
+        "export_obsidian": False,
+        "no_export": False,
+        "reprocess_from": None,
+        "reprocess_to": None,
+        "reprocess_sessions": None,
+        "whisper_model": None,
+        "whisper_backend": None,
+        "whisper_device": None,
+        "whisper_compute_type": None,
+        "whisper_beam_size": None,
+        "whisper_language": None,
+        "min_speakers": None,
+        "max_speakers": None,
+        "llm_backend": None,
+        "ollama_model": None,
+        "grok_model": None,
+        "claude_model": None,
+        "archive": None,
+        "config": None,
+        "poll_interval": None,
+        "settle_seconds": None,
+    }
+    for key, value in defaults.items():
+        if not hasattr(args, key):
+            setattr(args, key, value)
+
+
 def main(argv: Optional[list] = None) -> int:
     load_dotenv()
 
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.command == "process":
+        _ensure_pipeline_arg_defaults(args)
     cfg = resolve_config(args)
 
     if args.command == "sync":
