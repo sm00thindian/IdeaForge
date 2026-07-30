@@ -148,6 +148,21 @@ profile = "generic_wav"
 
 ---
 
+## Tier 2 — Creative engine (1.2.0+)
+
+| Item | Status | Notes |
+|------|--------|-------|
+| Keyword intent routing (`song idea`) | Done in 1.2.0 | `creative_intent.py`; `processing.mode = auto` |
+| Song-idea LLM prompts + style config | Done in 1.2.0 | `[creative]`, `[creative.suno]`, `[creative.udio]` |
+| Suno v5.5 + Udio platform formatters | Done in 1.2.0 | 1000-char Suno style clamp, section tags, sidecar files |
+| Operator maturity (doctor, last notes, PATH, retry) | Done in 1.2.0 | Epic #1 Wave A — see GitHub issues |
+| Multi-pass lyric polish | Planned 1.3.0 | Optional two-pass pipeline (#17) |
+| Chorus variants | Planned 1.3.0 | Multiple hook alternatives in output (#17) |
+| Extensible intent registry | Planned 1.4.0 | `poem_idea`, `melody_note`, per-device triggers |
+| Song project library (multi-memo) | Planned 2.0 | Link memos to `song_id` over time |
+
+---
+
 ## Explicit non-goals (for now)
 
 - Windows/Linux daemon parity (macOS LaunchAgent is the reference).

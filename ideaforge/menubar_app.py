@@ -11,7 +11,18 @@ from typing import IO, List, Optional
 
 from ideaforge.branding import notification_icon_path
 from ideaforge.config import IdeaForgeConfig
-from ideaforge.health import DAEMON_LOG_PATH, open_daemon_log_tail
+from ideaforge.health import (
+    DAEMON_LOG_PATH,
+    ServiceHealth,
+    check_daemon_health,
+    check_menubar_health,
+    open_daemon_log_tail,
+    restart_daemon_service,
+    restart_menubar_service,
+    start_daemon_service,
+    start_retry_failed_job,
+    stop_daemon_service,
+)
 from ideaforge.archive_status import pending_failure_count
 from ideaforge.status import (
     STATE_COMPLETE,
@@ -24,12 +35,15 @@ from ideaforge.status import (
     STEP_DONE,
     STEP_PENDING,
     STEP_SKIPPED,
+    LastNote,
     PipelineStatus,
     default_status_path,
     format_elapsed,
+    load_last_notes,
     load_status,
     menu_bar_title,
     resolve_display_status,
+    seed_last_notes_from_archive,
 )
 
 LOCK_PATH = Path.home() / "Library" / "Application Support" / "IdeaForge" / "menubar.lock"
@@ -140,8 +154,23 @@ class IdeaForgeMenuBarApp:
         self.elapsed_item = rumps.MenuItem("", callback=None)
         self.pipeline_item = rumps.MenuItem("", callback=None)
         self.failures_item = rumps.MenuItem("", callback=None)
+        self.retry_failed_item = rumps.MenuItem(
+            "Retry Failed Sessions",
+            callback=None,
+        )
+        self.daemon_item = rumps.MenuItem("", callback=None)
+        self.last_notes_item = rumps.MenuItem("No recent notes", callback=None)
+        self.start_daemon_item = rumps.MenuItem("Start Daemon", callback=self.start_daemon)
+        self.stop_daemon_item = rumps.MenuItem("Stop Daemon", callback=self.stop_daemon)
+        self.restart_daemon_item = rumps.MenuItem("Restart Daemon", callback=self.restart_daemon)
+        self.restart_menubar_item = rumps.MenuItem(
+            "Restart Menubar",
+            callback=self.restart_menubar,
+        )
         self._archive_path = _resolve_archive_path()
         self._log_path = DAEMON_LOG_PATH
+        self._last_notes_signature: Optional[tuple] = None
+        self._seeded_last_notes = False
 
         self.app.menu = [
             self.status_item,
@@ -149,6 +178,14 @@ class IdeaForgeMenuBarApp:
             self.elapsed_item,
             self.pipeline_item,
             self.failures_item,
+            self.retry_failed_item,
+            self.daemon_item,
+            self.last_notes_item,
+            None,
+            self.start_daemon_item,
+            self.stop_daemon_item,
+            self.restart_daemon_item,
+            self.restart_menubar_item,
             None,
             rumps.MenuItem("Open Archive", callback=self.open_archive),
             rumps.MenuItem("Open Log", callback=self.open_log),
@@ -160,6 +197,7 @@ class IdeaForgeMenuBarApp:
 
     def refresh(self, _) -> None:
         status = resolve_display_status(load_status())
+        daemon = check_daemon_health()
         failure_count = pending_failure_count(_load_config())
         title = _menu_title_with_failures(status, failure_count)
         # Title appears beside the icon on the same menu bar item.
@@ -176,6 +214,9 @@ class IdeaForgeMenuBarApp:
         headline = state_labels.get(status.state, status.state.title())
         if status.stage and status.state in (STATE_PROCESSING, STATE_SETTLING):
             headline = status.stage
+        if status.output_intent == "song_idea" and status.state == STATE_PROCESSING:
+            if headline in ("Meeting notes", "Summarizing"):
+                headline = "Song idea"
 
         self.status_item.title = headline
 
@@ -197,11 +238,110 @@ class IdeaForgeMenuBarApp:
 
         if failure_count:
             noun = "session" if failure_count == 1 else "sessions"
-            self.failures_item.title = (
-                f"⚠ {failure_count} failed {noun} — retry from archive"
-            )
+            self.failures_item.title = f"⚠ {failure_count} failed {noun}"
+            self.retry_failed_item.title = f"Retry {failure_count} Failed Session(s)"
+            self.retry_failed_item.set_callback(self.retry_failed)
         else:
             self.failures_item.title = "No pending failures"
+            self.retry_failed_item.title = "Retry Failed Sessions"
+            self.retry_failed_item.set_callback(None)
+
+        self.daemon_item.title = f"Daemon: {daemon.status_line}"
+        self._update_daemon_controls(daemon)
+        self._update_last_notes_menu()
+
+    def _update_last_notes_menu(self) -> None:
+        notes = load_last_notes()
+        if not notes and not self._seeded_last_notes:
+            self._seeded_last_notes = True
+            cfg = _load_config()
+            notes = seed_last_notes_from_archive(cfg.archive.expanduser())
+        signature = tuple((n.path, n.title, n.output_intent) for n in notes)
+        if signature == self._last_notes_signature:
+            return
+        self._last_notes_signature = signature
+        self._rebuild_last_notes_menu(notes)
+
+    def _rebuild_last_notes_menu(self, notes: List[LastNote]) -> None:
+        rumps = self._rumps
+        # Drop prior submenu children (rumps MenuItem behaves like a mapping).
+        try:
+            self.last_notes_item.clear()
+        except Exception:
+            pass
+
+        if not notes:
+            self.last_notes_item.title = "No recent notes"
+            self.last_notes_item.set_callback(None)
+            return
+
+        if len(notes) == 1:
+            note = notes[0]
+            self.last_notes_item.title = f"Open Notes: {note.menu_label}"
+            path = note.path
+
+            def _open_one(_sender=None, note_path: str = path) -> None:
+                _open_path(Path(note_path))
+
+            self.last_notes_item.set_callback(_open_one)
+            return
+
+        self.last_notes_item.title = f"Open Last Notes ({len(notes)})"
+        self.last_notes_item.set_callback(None)
+        for note in notes:
+            path = note.path
+            item = rumps.MenuItem(note.menu_label)
+
+            def _open_note(_sender=None, note_path: str = path) -> None:
+                _open_path(Path(note_path))
+
+            item.set_callback(_open_note)
+            self.last_notes_item.add(item)
+
+    def _update_daemon_controls(self, daemon: ServiceHealth) -> None:
+        can_manage = daemon.installed
+        self.start_daemon_item.set_callback(
+            self.start_daemon if can_manage and not daemon.running else None
+        )
+        self.stop_daemon_item.set_callback(
+            self.stop_daemon if can_manage and daemon.running else None
+        )
+        self.restart_daemon_item.set_callback(
+            self.restart_daemon if can_manage else None
+        )
+        menubar = check_menubar_health()
+        self.restart_menubar_item.set_callback(
+            self.restart_menubar if menubar.installed else None
+        )
+
+    def _notify_service_action(self, ok: bool, message: str, *, kind: str = "service") -> None:
+        title = "IdeaForge" if ok else f"IdeaForge — {kind} error"
+        self._rumps.notification(title, None, message, sound=False)
+
+    def start_daemon(self, _) -> None:
+        ok, message = start_daemon_service()
+        self._notify_service_action(ok, message, kind="daemon")
+        self.refresh(None)
+
+    def stop_daemon(self, _) -> None:
+        ok, message = stop_daemon_service()
+        self._notify_service_action(ok, message, kind="daemon")
+        self.refresh(None)
+
+    def restart_daemon(self, _) -> None:
+        ok, message = restart_daemon_service()
+        self._notify_service_action(ok, message, kind="daemon")
+        self.refresh(None)
+
+    def restart_menubar(self, _) -> None:
+        ok, message = restart_menubar_service()
+        self._notify_service_action(ok, message, kind="menubar")
+        # Process may exit soon after kickstart; no need to refresh.
+
+    def retry_failed(self, _) -> None:
+        ok, message = start_retry_failed_job(_load_config())
+        self._notify_service_action(ok, message, kind="retry")
+        self.refresh(None)
 
     def open_archive(self, _) -> None:
         _open_path(self._archive_path)

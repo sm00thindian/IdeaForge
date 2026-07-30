@@ -221,16 +221,25 @@ class CreativeSpark:
 
 @dataclass
 class CreativeOutput:
-    """Structured creative output — lyrics, song ideas, Suno prompts."""
+    """Structured creative output — lyrics, song ideas, Suno/Udio prompts."""
 
     title: str
     date: str
     creative_summary: str
     themes: List[str] = field(default_factory=list)
     sparks: List[CreativeSpark] = field(default_factory=list)
+    intent: str = "song_idea"
+    raw_lyric_fragments: List[str] = field(default_factory=list)
+    detected_style: Optional[str] = None
+    rhyme_scheme: Optional[str] = None
+    applied_style: Optional[str] = None
+    style_variation_index: Optional[int] = None
+    chorus_hook: Optional[str] = None
     lyrics_draft: Optional[str] = None
     suno_style_prompt: Optional[str] = None
     suno_lyrics_prompt: Optional[str] = None
+    udio_prompt: Optional[str] = None
+    udio_lyrics: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -248,10 +257,29 @@ class CreativeOutput:
             "",
         ]
 
+        if self.detected_style or self.applied_style or self.rhyme_scheme:
+            lines += ["## Style", ""]
+            if self.detected_style:
+                lines.append(f"- **From memo:** {self.detected_style}")
+            if self.applied_style:
+                lines.append(f"- **Applied:** {self.applied_style}")
+            if self.rhyme_scheme:
+                lines.append(f"- **Rhyme scheme:** {self.rhyme_scheme}")
+            lines.append("")
+
         if self.themes:
             lines += ["## Themes", ""]
             for theme in self.themes:
                 lines.append(f"- {theme}")
+            lines.append("")
+
+        if self.chorus_hook:
+            lines += ["## Chorus Hook", "", f"> {self.chorus_hook}", ""]
+
+        if self.raw_lyric_fragments:
+            lines += ["## Raw Fragments", ""]
+            for fragment in self.raw_lyric_fragments:
+                lines.append(f"- {fragment}")
             lines.append("")
 
         if self.sparks:
@@ -272,9 +300,43 @@ class CreativeOutput:
             lines += ["## Lyrics Draft", "", self.lyrics_draft, ""]
 
         if self.suno_style_prompt:
-            lines += ["## Suno Style Prompt", "", f"```\n{self.suno_style_prompt}\n```", ""]
+            lines += [
+                "## Suno v5.5 Style",
+                "",
+                "Copy into Suno **Style of Music**:",
+                "",
+                f"```\n{self.suno_style_prompt}\n```",
+                "",
+            ]
 
         if self.suno_lyrics_prompt:
-            lines += ["## Suno Lyrics Prompt", "", f"```\n{self.suno_lyrics_prompt}\n```", ""]
+            lines += [
+                "## Suno v5.5 Lyrics",
+                "",
+                "Copy into Suno **Lyrics**:",
+                "",
+                f"```\n{self.suno_lyrics_prompt}\n```",
+                "",
+            ]
+
+        if self.udio_prompt:
+            lines += [
+                "## Udio Prompt",
+                "",
+                "Copy into Udio **Describe Your Song**:",
+                "",
+                f"```\n{self.udio_prompt}\n```",
+                "",
+            ]
+
+        if self.udio_lyrics:
+            lines += [
+                "## Udio Lyrics",
+                "",
+                "Copy into Udio **Custom Lyrics**:",
+                "",
+                f"```\n{self.udio_lyrics}\n```",
+                "",
+            ]
 
         return "\n".join(lines).strip() + "\n"

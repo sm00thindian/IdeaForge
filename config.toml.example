@@ -1,5 +1,46 @@
 # IdeaForge configuration
 # Copy to ~/.config/ideaforge/config.toml
+#
+# Voice memos → meeting notes or song ideas (mode = auto).
+# Validate anytime:  ideaforge --validate-config
+# Health check:      ideaforge --doctor
+#
+# ---------------------------------------------------------------------------
+# PRESETS (copy the block that matches your machine, then customize below)
+# ---------------------------------------------------------------------------
+#
+# --- meeting-minimal (8 GB Mac, meetings only, fastest) ---
+# [whisper]
+# model = "tiny"
+# [processing]
+# mode = "meeting"
+# diarize = false
+# max_parallel_sessions = 1
+# merge_to_mp3 = true
+# [creative]
+# enabled = false
+#
+# --- meeting+diarize (16 GB+, named speakers) ---
+# [whisper]
+# model = "small"
+# [processing]
+# mode = "meeting"
+# diarize = true
+# max_parallel_sessions = 1
+# # requires HF_TOKEN in env / .env, then ./scripts/install-daemon.sh
+#
+# --- song-auto (meetings + "song idea" trigger at start of memo) ---
+# [processing]
+# mode = "auto"
+# max_parallel_sessions = 1
+# [creative]
+# enabled = true
+# trigger_phrases = ["song idea", "lyric idea"]
+#
+# Memory guide:
+#   8 GB  → max_parallel_sessions = 1, whisper tiny/base, diarize off
+#   16 GB+ → parallel 2 is OK if summarize (Grok) is the bottleneck
+# ---------------------------------------------------------------------------
 
 archive = "~/IdeaForge"
 
@@ -32,18 +73,44 @@ beam_size = 1            # faster-whisper only; 1 is fastest
 language = "en"          # force English (omit for auto-detect)
 
 [processing]
-mode = "meeting"         # meeting | creative | auto
+mode = "auto"            # meeting | creative | auto (auto = meeting unless keyword trigger)
 output_format = "both"   # md | json | both
 diarize = false
 min_file_size_bytes = 50000
+delete_empty_merged_audio = true  # remove *_merged.wav when Whisper finds no speech
 merge_chunks = true          # join consecutive recorder splits (e.g. 15 min max)
+merge_to_mp3 = true          # after success: *_merged.wav → *_merged.mp3 (sources stay WAV; needs ffmpeg)
+merge_mp3_bitrate = "64k"    # speech-friendly mono bitrate for the merge artifact
 chunk_mode = "gap"           # gap | silence | fixed_window | none (0.9.0+)
 chunk_gap_seconds = 30       # max gap between chunk end and next start
 merge_min_chunk_seconds = 600  # prior chunk must be this long to merge (filters short clips)
+max_session_seconds = 14400  # 4h cap on multi-chunk merges (Metal ~4 GiB limit; 0 = off)
 split_silence_seconds = 3.0  # silence split: min gap between sessions
 split_window_seconds = 900   # fixed_window split: segment length in seconds
 normalize_audio = true       # convert MP3/FLAC/etc. to WAV via ffmpeg before transcribe
-max_parallel_sessions = 2      # 1 = sequential; 2+ pipelines sessions (GPU serialized, LLM overlaps)
+max_parallel_sessions = 1      # 1 = safest (8 GB); use 2+ on 16 GB+ (GPU still serialized)
+
+[creative]
+enabled = true
+trigger_phrases = ["song idea", "lyric idea"]
+scan_chars = 500               # inspect this many chars at transcript start for triggers
+temperature = 0.6              # LLM temperature for song-idea mode (meetings use 0.2)
+style_merge = "merge"          # merge | memo_wins | pick_first | pick_random
+target_duration_minutes = 4.5  # aim for 4–5 minute Suno/Udio song length
+rhyme_scheme = "mixed"         # abab | aabb | mixed (per-section)
+
+[creative.suno]
+style_default = "acoustic folk, warm male vocal, fingerpicked guitar, intimate"
+style_variations = [
+  "acoustic folk, 85 BPM, porch-light ambience",
+  "indie folk, sparse piano, melancholic female vocal",
+]
+
+[creative.udio]
+style_default = "folk, mellow, warm, acoustic guitar, intimate vocals"
+style_variations = [
+  "folk, nostalgic, gentle fingerpicking, sunset mood",
+]
 
 [diarization]
 # Hugging Face token for pyannote models (or set HF_TOKEN env var)

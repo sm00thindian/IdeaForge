@@ -315,3 +315,66 @@ def concat_wav_files(paths: Sequence[Path], output: Path) -> Path:
         for chunk in frames:
             out.writeframes(chunk)
     return output
+
+
+def encode_wav_to_mp3(
+    wav_path: Path,
+    output: Path | None = None,
+    *,
+    bitrate: str = "64k",
+) -> Path:
+    """
+    Encode a PCM WAV to mono MP3 (speech-friendly default bitrate).
+
+    Requires ffmpeg. Returns the MP3 path.
+    """
+    if not ffmpeg_available():
+        raise RuntimeError("ffmpeg not found on PATH — required for merge_to_mp3")
+    if not wav_path.is_file():
+        raise FileNotFoundError(f"WAV not found: {wav_path}")
+
+    mp3_path = output or wav_path.with_suffix(".mp3")
+    # Keep stem like ``R…_merged.mp3`` when input is ``R…_merged.wav``.
+    if mp3_path.suffix.lower() != ".mp3":
+        mp3_path = mp3_path.with_suffix(".mp3")
+    mp3_path.parent.mkdir(parents=True, exist_ok=True)
+
+    _run_command([
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(wav_path),
+        "-ac",
+        "1",
+        "-c:a",
+        "libmp3lame",
+        "-b:a",
+        bitrate,
+        str(mp3_path),
+    ])
+    return mp3_path
+
+
+def compress_merged_wav_to_mp3(
+    merged_wav: Path,
+    *,
+    bitrate: str = "64k",
+    delete_wav: bool = True,
+) -> Path:
+    """
+    Replace a multi-chunk ``*_merged.wav`` with ``*_merged.mp3`` after ML succeeds.
+
+    Source chunk WAVs are left alone (caller purges those separately).
+    """
+    if not merged_wav.is_file():
+        raise FileNotFoundError(f"merged WAV not found: {merged_wav}")
+    if not merged_wav.stem.endswith("_merged"):
+        raise ValueError(f"not a merged artifact: {merged_wav.name}")
+
+    mp3_path = encode_wav_to_mp3(merged_wav, merged_wav.with_suffix(".mp3"), bitrate=bitrate)
+    if delete_wav:
+        try:
+            merged_wav.unlink()
+        except OSError as exc:
+            print(f"   ⚠️  Could not remove merged WAV after MP3 encode: {exc}")
+    return mp3_path

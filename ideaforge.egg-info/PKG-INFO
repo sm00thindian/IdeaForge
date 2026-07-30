@@ -107,8 +107,46 @@ USB recorder plugged in
 ### Processing modes
 
 - **`meeting`** — Executive summary, speaker identities, action items, decisions, follow-ups
-- **`creative`** — Song ideas, lyrics drafts, Suno v5.5 prompts
-- **`auto`** — LLM classifies transcript and picks the right schema
+- **`creative`** — Force song-idea pipeline on every recording
+- **`auto`** (recommended) — Meeting notes by default; **keyword trigger** at the start of a recording routes to song-idea mode
+
+### Song idea mode
+
+Say a trigger phrase at the **start** of your voice memo (default: **"song idea"**). IdeaForge detects it after transcription and produces copy-ready **Suno v5.5** and **Udio** blocks — style prompt, lyrics, and paste sidecars (`*_suno.txt`, `*_udio.txt`).
+
+Example memo opening:
+
+> "Song idea. Acoustic folk about fireflies on the porch — chorus should feel like a summer singalong."
+
+Configure your default styles and variations in `~/.config/ideaforge/config.toml`:
+
+```toml
+[processing]
+mode = "auto"            # meeting unless trigger phrase matches
+
+[creative]
+enabled = true
+trigger_phrases = ["song idea", "lyric idea"]
+temperature = 0.6
+
+[creative.suno]
+style_default = "acoustic folk, warm male vocal, fingerpicked guitar"
+style_variations = [
+  "acoustic folk, 85 BPM, porch-light ambience",
+]
+
+[creative.udio]
+style_default = "folk, mellow, warm, acoustic guitar"
+style_variations = [
+  "folk, nostalgic, gentle fingerpicking",
+]
+```
+
+Re-run on an existing transcript:
+
+```bash
+ideaforge --source ~/IdeaForge/2026-06-27 --llm-only --force
+```
 
 ## Quick start
 
@@ -256,7 +294,8 @@ ideaforge --daemon
 # Restart after code or config changes
 launchctl kickstart -k gui/$(id -u)/com.ideaforge.daemon
 
-# Watch logs (auto-rotated at 10 MiB — keeps daemon.log.1 … .log.3)
+# Watch logs (auto-rotated at 10 MiB — keeps daemon.log.1 … .log.3;
+# daily rotation also prunes leftover *_merged.wav older than merged_wav_retain_days, default 3)
 tail -f ~/Library/Logs/ideaforge/daemon.log
 
 # Stop (keeps install — restart with install-daemon.sh)
@@ -346,7 +385,7 @@ Foreground `ideaforge --daemon` reads config and env from your current shell eac
 
 ## Menu bar progress
 
-Optional live progress in the macOS menu bar (stage, percent, ETA). The pipeline writes `~/Library/Application Support/IdeaForge/status.json`; the menubar app polls it every second.
+Optional live progress in the macOS menu bar (stage, percent, ETA). The pipeline writes `~/Library/Application Support/IdeaForge/status.json`; the menubar app polls it every second. After a run that creates meeting or song notes, the menu shows **Open Notes** (or a submenu when several sessions finished) so you can open the markdown in your default editor. Those links are replaced the next time new notes are written.
 
 ```bash
 ./scripts/install-menubar.sh    # LaunchAgent (singleton — one instance)
@@ -478,22 +517,27 @@ Everything lands under the archive root from config (default `~/IdeaForge`). Wit
 ├── office-z28/                  # when [[devices]] is configured
 │   ├── .processed_log.json      # per-device state (failures, hashes)
 │   └── YYYY-MM-DD/
-└── YYYY-MM-DD/                  # legacy flat layout (coexists after enabling [[devices]])
-    ├── R2026-06-27-07-43-11.WAV           # source chunk copied from device
-    ├── R2026-06-27-07-58-22.WAV           # second chunk (same session if gap ≤ chunk_gap_seconds)
-    ├── R2026-06-27-07-43-11_merged.WAV    # merged audio when multiple chunks are grouped
-    ├── R2026-06-27-07-43-11.txt             # transcript
-    ├── R2026-06-27-07-43-11_whisper.json    # whisper metadata
-    ├── R2026-06-27-07-43-11_segments.json   # timed segments
-    ├── R2026-06-27-07-43-11_turns.json      # diarization turn cache
-    ├── R2026-06-27-07-43-11_diarized.json   # speaker-labeled segments
-    ├── R2026-06-27-07-43-11_summary.md      # meeting notes (Markdown)
-    └── R2026-06-27-07-43-11_summary.json    # structured LLM output (action items, speakers, …)
+│       ├── 20260627 - Standup notes.md   # human-facing notes (date root — easy to find)
+│       └── R2026-06-27-07-43-11/         # one package per session
+│           ├── R2026-06-27-07-43-11.WAV
+│           ├── R2026-06-27-07-58-22.WAV   # extra chunk (same session if gap rule matches)
+│           ├── R2026-06-27-07-43-11_merged.wav
+│           ├── R2026-06-27-07-43-11.txt
+│           ├── R2026-06-27-07-43-11_*.json  # whisper / segments / turns / diarized / summary
+│           └── R2026-06-27-07-43-11_suno.txt  # creative sidecars when applicable
+└── YYYY-MM-DD/                  # legacy flat root (coexists after enabling [[devices]])
 ```
 
 **Sessions vs chunks:** Consecutive recorder splits (same meeting, gap ≤ `chunk_gap_seconds`, each chunk ≥ `merge_min_chunk_seconds`) merge into one session. The session stem is the **first chunk's filename**; outputs use that stem even when several `R*.WAV` files were merged.
 
-**Derived files:** `*_merged.WAV` files are pipeline artifacts — they are not re-ingested or re-processed as source audio.
+**Layout:** New runs write **Markdown notes at the date-folder root** (`YYYYMMDD - Title.md`) and put audio, transcripts, and ML sidecars under `R…/` session packages. Older flat date folders still work (dual-read). To reorganize an existing archive:
+
+```bash
+ideaforge --migrate-layout --source ~/IdeaForge --dry-run
+ideaforge --migrate-layout --source ~/IdeaForge
+```
+
+**Derived files:** Multi-chunk joins are pipeline artifacts (`*_merged.wav` during ML; after success `*_merged.mp3` when `merge_to_mp3 = true`). They are not re-ingested as source audio. The daemon prunes leftovers older than `merged_wav_retain_days` (default 3) during daily log rotation; set to `0` to keep them.
 
 **Runtime state (outside the archive):**
 
@@ -805,7 +849,9 @@ ideaforge/
 ├── audio_util.py   # ffmpeg-free audio loader + WAV merge
 ├── llm.py          # Grok / Claude / Ollama backends
 ├── export.py       # Apple Reminders + Obsidian action item export
-├── prompts.py      # Meeting and creative prompts
+├── prompts.py      # Meeting and song-idea prompts
+├── creative_intent.py   # Keyword trigger detection
+├── creative_platforms.py  # Suno/Udio formatters and sidecars
 ├── schema.py       # MeetingNotes, SpeakerIdentity, etc.
 ├── config.py       # TOML + .env loading
 ├── notify.py       # macOS completion notifications

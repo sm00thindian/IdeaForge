@@ -64,22 +64,32 @@ def resolve_manual_sync(
             return resolved, archive, resolved, effective_scope
         return resolved, archive, resolved, effective_scope
 
-    # session scope
+    # session scope — nested package, date folder, or legacy path
     if _DATE_FOLDER.match(resolved.name):
         work_folder = resolved
+    elif resolved.is_dir() and _DATE_FOLDER.match(resolved.parent.name):
+        # Session package under YYYY-MM-DD/
+        work_folder = resolved
     elif _DATE_FOLDER.match(resolved.parent.name):
+        work_folder = resolved.parent
+    elif resolved.parent.is_dir() and _DATE_FOLDER.match(resolved.parent.parent.name):
+        # File inside a session package
         work_folder = resolved.parent
     else:
         work_folder = resolved
 
-    device_root = work_folder.parent
+    # Device root is parent of the date folder when nested.
+    date_parent = work_folder
+    if not _DATE_FOLDER.match(work_folder.name) and _DATE_FOLDER.match(work_folder.parent.name):
+        date_parent = work_folder.parent
+    device_root = date_parent.parent
     device_name = None
     for name, root in list_device_archive_roots(cfg):
-        if work_folder.parent == root.resolve():
+        if date_parent.parent == root.resolve():
             device_name = name
             device_root = root
             break
-    if device_name is None and work_folder.parent == archive:
+    if device_name is None and date_parent.parent == archive:
         device_root = archive
 
     local_path = resolve_sync_paths(

@@ -9,12 +9,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional
 
+from ideaforge.session_time import (
+    RECORDING_FILENAME_PATTERN as RECORDING_PATTERN,
+    iter_source_recordings,
+)
+
 if TYPE_CHECKING:
     from ideaforge.config import IdeaForgeConfig
     from ideaforge.device_profiles import DeviceProfile
 
-# Z28/Z29 recorders store WAV files as RYYYY-MM-DD-HH-MM-SS.WAV in RECORD/
-RECORDING_PATTERN = re.compile(r"^R\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.WAV$", re.IGNORECASE)
 KNOWN_RECORD_FOLDERS = ("RECORD", "Record", "record")
 SETTINGS_FILES = ("recset.txt", "RECSET.TXT")
 RECSET_TIME_PATTERN = re.compile(
@@ -41,15 +44,13 @@ class RecorderDevice:
 
 
 def is_recorder_volume(volume: Path) -> bool:
-    """Heuristic: volume contains RECORD/ with R*.WAV files or recset.txt."""
+    """Heuristic: volume contains RECORD/ with R*/V* WAV files or recset.txt."""
     if not volume.is_dir():
         return False
     for folder_name in KNOWN_RECORD_FOLDERS:
         record_dir = volume / folder_name
-        if record_dir.is_dir():
-            wavs = list(record_dir.glob("R*.WAV")) + list(record_dir.glob("R*.wav"))
-            if wavs:
-                return True
+        if record_dir.is_dir() and any(iter_source_recordings(record_dir)):
+            return True
     for settings in SETTINGS_FILES:
         if (volume / settings).is_file():
             return True

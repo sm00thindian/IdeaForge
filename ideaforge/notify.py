@@ -16,8 +16,11 @@ class RecordingResult:
     title: Optional[str] = None
     action_items: int = 0
     action_preview: List[str] = field(default_factory=list)
+    output_intent: Optional[str] = None
+    summary_md: Optional[str] = None
     skipped: bool = False
     failed: bool = False
+    empty: bool = False
 
 
 @dataclass
@@ -45,6 +48,8 @@ def format_completion_notification(
 
     if result.files_processed == 1 and result.recordings:
         rec = next((r for r in result.recordings if not r.skipped), result.recordings[0])
+        if rec.empty:
+            return title, rec.stem, "Silent recording — audio discarded"
         subtitle = rec.title or rec.stem
         parts: List[str] = []
         if rec.action_items:
@@ -53,7 +58,11 @@ def format_completion_notification(
             )
         if rec.action_preview:
             parts.append(" · ".join(rec.action_preview[:2]))
-        message = " · ".join(parts) if parts else "Meeting notes saved"
+        if rec.output_intent == "song_idea":
+            default_message = "Suno and Udio prompts saved"
+        else:
+            default_message = "Meeting notes saved"
+        message = " · ".join(parts) if parts else default_message
         return title, subtitle, message
 
     subtitle = f"{result.files_processed} recording(s) processed"
@@ -90,8 +99,14 @@ def notify_mac(
     message: str,
     subtitle: Optional[str] = None,
     sound: bool = True,
+    open_path: Optional[str] = None,
 ) -> bool:
-    """Show a macOS notification. Returns True if dispatched."""
+    """Show a macOS notification. Returns True if dispatched.
+
+    When ``open_path`` is set and terminal-notifier is available, clicking the
+    notification opens that file (or folder). AppleScript fallback cannot open
+    on click.
+    """
     if platform.system() != "Darwin":
         return False
 
@@ -110,6 +125,12 @@ def notify_mac(
             cmd.extend(["-appIcon", str(icon)])
         if sound:
             cmd.extend(["-sound", "Glass"])
+        if open_path:
+            # file:// or bare path — terminal-notifier accepts -open for click action
+            open_target = open_path
+            if not open_target.startswith("file:") and Path(open_target).exists():
+                open_target = Path(open_target).resolve().as_uri()
+            cmd.extend(["-open", open_target])
         try:
             subprocess.run(cmd, check=True, capture_output=True, text=True)
             return True
@@ -161,6 +182,19 @@ def notify_session_failure(session_stem: str, error: str) -> bool:
     return False
 
 
+def first_openable_notes_path(result: ProcessResult) -> Optional[str]:
+    """First existing markdown path from a completed process result."""
+    for rec in result.recordings:
+        if rec.skipped or rec.failed or rec.empty:
+            continue
+        if not rec.summary_md:
+            continue
+        path = Path(rec.summary_md)
+        if path.is_file():
+            return str(path.resolve())
+    return None
+
+
 def notify_process_complete(
     result: ProcessResult,
     *,
@@ -170,8 +204,15 @@ def notify_process_complete(
         result,
         device_label=device_label,
     )
-    if notify_mac(title=title, message=message, subtitle=subtitle):
-        print(f"    🔔 Notification sent: {subtitle}")
+    open_path = first_openable_notes_path(result)
+    if notify_mac(
+        title=title,
+        message=message,
+        subtitle=subtitle,
+        open_path=open_path,
+    ):
+        hint = f" (click to open notes)" if open_path else ""
+        print(f"    🔔 Notification sent: {subtitle}{hint}")
 
 
 def _escape_applescript(text: str) -> str:

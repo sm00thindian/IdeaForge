@@ -49,6 +49,8 @@ cat > "$PLIST_PATH" <<EOF
     <dict>
         <key>PYTHONUNBUFFERED</key>
         <string>1</string>
+        <key>PATH</key>
+        <string>$(ideaforge_launchd_path)</string>
     </dict>
     <key>WorkingDirectory</key>
     <string>$ROOT</string>

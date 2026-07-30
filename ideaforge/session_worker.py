@@ -8,7 +8,13 @@ from contextlib import nullcontext
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Set
 
-from ideaforge.audio_util import concat_wav_files, ensure_pipeline_audio
+from ideaforge.audio_util import (
+    compress_merged_wav_to_mp3,
+    concat_wav_files,
+    ensure_pipeline_audio,
+    get_audio_duration_seconds,
+    split_audio_fixed_window,
+)
 from ideaforge.chunks import RecordingGroup
 from ideaforge.config import IdeaForgeConfig
 from ideaforge.device import is_path_on_recorder
@@ -32,7 +38,12 @@ from ideaforge.status import (
     active_reporter,
     build_step_plan,
 )
-from ideaforge.summary_names import legacy_summary_md_path, resolve_summary_md_path
+from ideaforge.session_layout import (
+    ensure_session_dir,
+    relocate_files_to_session_dir,
+    resolve_date_folder,
+    session_artifact_paths,
+)
 from ideaforge.transcribe import diarize_existing, transcribe_audio
 
 
@@ -74,15 +85,34 @@ def _purge_chunk_sources_after_merge(
     return removed
 
 
+def _purge_empty_merged_audio(
+    *,
+    process_path: Path,
+    transcript_path: Path,
+    enabled: bool = True,
+) -> bool:
+    """Delete merged WAV when transcription produced no words."""
+    if not enabled:
+        return False
+    if not process_path.stem.endswith("_merged"):
+        return False
+    try:
+        text = transcript_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return False
+    if text:
+        return False
+    try:
+        process_path.unlink()
+        return True
+    except OSError:
+        print(f"   ⚠️  Could not remove empty merged audio: {process_path.name}")
+        return False
+
+
 def output_paths(folder: Path, stem: str) -> Dict[str, Path]:
-    resolved_md = resolve_summary_md_path(folder, stem)
-    return {
-        "transcript": folder / f"{stem}.txt",
-        "summary_md": resolved_md or legacy_summary_md_path(folder, stem),
-        "summary_json": folder / f"{stem}_summary.json",
-        "diarized": folder / f"{stem}_diarized.json",
-        "segments": folder / f"{stem}_segments.json",
-    }
+    """Artifact map for a session working directory (nested or flat)."""
+    return session_artifact_paths(folder, stem)
 
 
 def summary_exists(paths: Dict[str, Path], output_format: str) -> bool:
@@ -100,17 +130,31 @@ def read_summary_brief(summary_json: Path, *, session_stem: str) -> RecordingRes
         data = json.loads(summary_json.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return RecordingResult(stem=session_stem)
+    from ideaforge.summary_names import creative_preview_lines, resolve_summary_md_path
+
     actions = data.get("action_items", [])
-    preview = [
-        f"{a.get('who', 'TBD')}: {a.get('what', '')}"
-        for a in actions[:2]
-        if a.get("what")
-    ]
+    metadata = data.get("metadata") or {}
+    is_song = (
+        data.get("intent") == "song_idea"
+        or metadata.get("output_intent") == "song_idea"
+    )
+    if is_song:
+        preview = creative_preview_lines(data)
+    else:
+        preview = [
+            f"{a.get('who', 'TBD')}: {a.get('what', '')}"
+            for a in actions[:2]
+            if a.get("what")
+        ]
+    output_intent = data.get("intent") or metadata.get("output_intent")
+    summary_md_path = resolve_summary_md_path(summary_json.parent, session_stem)
     return RecordingResult(
         stem=session_stem,
         title=data.get("title"),
         action_items=len(actions),
         action_preview=preview,
+        output_intent=output_intent,
+        summary_md=str(summary_md_path) if summary_md_path is not None else None,
     )
 
 
@@ -207,13 +251,25 @@ def process_group(
     log_lock: Optional[threading.Lock] = None,
 ) -> tuple[int, int, RecordingResult]:
     """Process one recording session. Returns (processed, skipped, brief)."""
+    session_stem = group.session_stem
     if stages.copy:
         if group.recording_time is not None:
-            work_folder = archive / group.recording_time.date_folder
+            date_folder = archive / group.recording_time.date_folder
         else:
-            work_folder = archive_folder_for_file(group.files[0], archive)
+            date_folder = archive_folder_for_file(group.files[0], archive)
+        work_folder = ensure_session_dir(date_folder, session_stem)
     else:
-        work_folder = group.files[0].parent
+        # In-place / daemon post-ingest / reprocess: nest under session package.
+        # Flat date-folder files are relocated into the package below.
+        audio_parent = group.files[0].parent
+        date_folder = resolve_date_folder(audio_parent) or audio_parent
+        if (
+            audio_parent.name == session_stem
+            and resolve_date_folder(audio_parent.parent) is not None
+        ):
+            work_folder = audio_parent
+        else:
+            work_folder = ensure_session_dir(date_folder, session_stem)
     reporter = active_reporter()
     session_tracker = (
         reporter.track_session() if reporter is not None else nullcontext()
@@ -236,8 +292,8 @@ def process_group(
                 reporter=reporter,
                 file_hashes=file_hashes,
                 work_folder=work_folder,
-                session_stem=group.session_stem,
-                paths=output_paths(work_folder, group.session_stem),
+                session_stem=session_stem,
+                paths=output_paths(work_folder, session_stem),
             )
         except Exception as exc:
             record_failure_locked(
@@ -310,9 +366,16 @@ def _process_group_body(
 
     copied_paths: List[Path] = []
     archive_copies: Dict[Path, Path] = {}
+    date_folder = resolve_date_folder(work_folder) or work_folder
 
     if stages.copy:
-        print(f"\n📼 {group.label} → {work_folder.name}/")
+        # Show date/session path when nested (e.g. 2026-07-20/R…/).
+        rel = (
+            f"{date_folder.name}/{work_folder.name}/"
+            if work_folder != date_folder
+            else f"{work_folder.name}/"
+        )
+        print(f"\n📼 {group.label} → {rel}")
         if reporter is not None:
             reporter.set_step_active(StepId.COPY, detail=f"0/{len(group.files)} files")
         for index, audio_file in enumerate(group.files, start=1):
@@ -330,9 +393,29 @@ def _process_group_body(
             reporter.mark_step_done(StepId.COPY)
     else:
         print(f"\n📼 {group.label} (in-place)")
-        copied_paths = list(group.files)
-        for audio_file in group.files:
-            archive_copies[audio_file] = audio_file
+        # Relocate flat date-folder (or mis-parented) files into the session package.
+        relocated = relocate_files_to_session_dir(group.files, work_folder)
+        copied_paths = list(relocated)
+        for src, dest in zip(group.files, relocated):
+            archive_copies[src] = dest
+        if work_folder != date_folder and date_folder.is_dir():
+            extras: List[Path] = []
+            try:
+                for child in date_folder.iterdir():
+                    if not child.is_file():
+                        continue
+                    # Leave friendly day-root notes in place.
+                    if child.suffix.lower() == ".md" and " - " in child.name:
+                        continue
+                    if child.stem == session_stem or child.stem.startswith(
+                        f"{session_stem}_"
+                    ):
+                        extras.append(child)
+            except OSError:
+                extras = []
+            if extras:
+                relocate_files_to_session_dir(extras, work_folder)
+        paths = output_paths(work_folder, session_stem)
 
     pipeline_paths = [
         ensure_pipeline_audio(
@@ -343,6 +426,7 @@ def _process_group_body(
         for path in copied_paths
     ]
 
+    merged_for_purge: Optional[Path] = None
     if len(pipeline_paths) > 1:
         if reporter is not None:
             reporter.set_step_active(
@@ -352,19 +436,22 @@ def _process_group_body(
         merged_name = f"{session_stem}_merged.wav"
         process_path = concat_wav_files(pipeline_paths, work_folder / merged_name)
         print(f"   🔗 Merged {len(pipeline_paths)} chunks → {process_path.name}")
-        removed = _purge_chunk_sources_after_merge(
-            chunk_paths=copied_paths,
-            pipeline_paths=pipeline_paths,
-            merged_path=process_path,
-        )
-        if removed:
-            print(f"   🗑️  Removed {removed} chunk file(s) after merge")
+        merged_for_purge = process_path
+        # Keep source chunks until ML succeeds so a Metal OOM / crash is recoverable.
         if reporter is not None:
             reporter.mark_step_done(StepId.MERGE)
     else:
         process_path = pipeline_paths[0]
         if reporter is not None and stages.transcribe:
             reporter.skip_step(StepId.MERGE)
+
+    # Guard single huge files (or leftover overnight merges) against Metal OOM.
+    process_path = _maybe_split_oversized_audio(
+        process_path,
+        work_folder=work_folder,
+        session_stem=session_stem,
+        max_session_seconds=cfg.max_session_seconds,
+    )
 
     transcript_path = paths["transcript"]
 
@@ -421,8 +508,28 @@ def _process_group_body(
             return 0, 0, RecordingResult(stem=session_stem)
         print("    📄 Using existing transcript")
 
-    if stages.llm and transcript_path and transcript_path.exists():
+    empty_recording = False
+    if (stages.transcribe or stages.diarize) and transcript_path:
+        if _purge_empty_merged_audio(
+            process_path=process_path,
+            transcript_path=transcript_path,
+            enabled=cfg.delete_empty_merged_audio,
+        ):
+            print(f"   🗑️  Removed empty recording audio: {process_path.name}")
+            empty_recording = True
+
+    if stages.llm and transcript_path and transcript_path.exists() and not empty_recording:
+        from ideaforge.creative_intent import resolve_summarize_context
+
+        transcript_text = transcript_path.read_text(encoding="utf-8")
+        output_intent, summarize_label = resolve_summarize_context(
+            transcript_text,
+            cfg.mode,
+            cfg.creative_settings(),
+        )
         if reporter is not None:
+            reporter.relabel_step(StepId.SUMMARIZE, summarize_label)
+            reporter.set_output_intent(output_intent)
             reporter.set_step_active(StepId.SUMMARIZE, detail=transcript_path.stem)
         process_transcript(
             transcript_path,
@@ -437,6 +544,9 @@ def _process_group_body(
             archive=archive,
             export_settings=export_settings,
             recording_time=group.recording_time,
+            creative_settings=cfg.creative_settings(),
+            suno_style=cfg.creative_suno_style(),
+            udio_style=cfg.creative_udio_style(),
         )
         if reporter is not None:
             reporter.mark_step_done(StepId.SUMMARIZE)
@@ -473,5 +583,80 @@ def _process_group_body(
         for audio_file, archive_copy in archive_copies.items():
             try_remove_from_device(audio_file, archive_copy, enabled=True)
 
-    brief = read_summary_brief(paths["summary_json"], session_stem=session_stem)
+    # Only drop source chunks after a successful session (keeps overnight recoveries).
+    if merged_for_purge is not None and not empty_recording:
+        removed = _purge_chunk_sources_after_merge(
+            chunk_paths=copied_paths,
+            pipeline_paths=pipeline_paths,
+            merged_path=merged_for_purge,
+        )
+        if removed:
+            print(f"   🗑️  Removed {removed} chunk file(s) after successful session")
+        # Archive the join as MP3 (small); ML already used the WAV merge.
+        if cfg.merge_to_mp3 and merged_for_purge.is_file():
+            try:
+                wav_mb = merged_for_purge.stat().st_size / (1024 * 1024)
+                mp3_path = compress_merged_wav_to_mp3(
+                    merged_for_purge,
+                    bitrate=cfg.merge_mp3_bitrate,
+                    delete_wav=True,
+                )
+                mp3_mb = mp3_path.stat().st_size / (1024 * 1024)
+                print(
+                    f"   🎵 Compressed merge → {mp3_path.name} "
+                    f"({wav_mb:.0f} MiB WAV → {mp3_mb:.1f} MiB MP3)"
+                )
+            except (RuntimeError, OSError, ValueError) as exc:
+                print(f"   ⚠️  merge_to_mp3 skipped — kept WAV: {exc}")
+
+    if empty_recording:
+        brief = RecordingResult(stem=session_stem, empty=True)
+    else:
+        brief = read_summary_brief(paths["summary_json"], session_stem=session_stem)
     return 1, 0, brief
+
+
+def _maybe_split_oversized_audio(
+    process_path: Path,
+    *,
+    work_folder: Path,
+    session_stem: str,
+    max_session_seconds: float,
+) -> Path:
+    """
+    If audio is longer than ``max_session_seconds``, process the first window only.
+
+    Multi-chunk groups are capped at grouping time; this is a last-resort guard
+    for a single huge file (e.g. leftover overnight merge). Metal cannot allocate
+    buffers over ~4 GiB (~6–8h depending on sample format).
+    """
+    if max_session_seconds <= 0:
+        return process_path
+    try:
+        duration = get_audio_duration_seconds(process_path)
+    except (OSError, ValueError):
+        return process_path
+    if duration <= max_session_seconds:
+        return process_path
+
+    hours = duration / 3600.0
+    cap_hours = max_session_seconds / 3600.0
+    print(
+        f"   ⚠️  Session audio is {hours:.1f}h (cap {cap_hours:.1f}h) — "
+        f"Apple Metal max buffer is 4 GiB. Processing first {cap_hours:.1f}h only."
+    )
+    parts = split_audio_fixed_window(
+        process_path,
+        work_folder,
+        window_seconds=max_session_seconds,
+    )
+    if len(parts) > 1:
+        print(
+            f"   ℹ️  Split into {len(parts)} window(s); later windows left as "
+            f"{parts[1].name} … — re-run with --reprocess on those parts if needed"
+        )
+    if not parts:
+        return process_path
+    first = parts[0]
+    print(f"   ✂️  Oversized audio → processing {first.name}")
+    return first

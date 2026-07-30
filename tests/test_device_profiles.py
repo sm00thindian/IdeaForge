@@ -42,6 +42,21 @@ def test_z28_profile_discovers_record_folder_files(tmp_path: Path):
     assert profile.parse_session_id(wav) == "R2026-06-30-09-00-00"
 
 
+def test_z28_profile_discovers_voice_activated_v_files(tmp_path: Path):
+    mount = tmp_path / "IDEAFORGE"
+    record = mount / "RECORD"
+    record.mkdir(parents=True)
+    wav = record / "V2118-10-05-12-48-15.WAV"
+    _write_wav(wav, duration_seconds=5.0)
+
+    profile = Z28Profile()
+    assert profile.matches_mount(mount)
+    assert profile.recording_count(mount) == 1
+    files = profile.discover_files(mount, {".wav", ".WAV"}, min_size_bytes=1_000)
+    assert files == [wav]
+    assert profile.parse_session_id(wav) == "V2118-10-05-12-48-15"
+
+
 def test_generic_wav_profile_recursive_discovery(tmp_path: Path):
     mount = tmp_path / "RECORDER"
     nested = mount / "audio" / "meetings"

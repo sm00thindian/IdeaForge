@@ -4,9 +4,9 @@
 
 # IdeaForge
 
-**Plug in your recorder. Get meeting notes.**
+**Plug in your recorder. Get meeting notes — or song ideas.**
 
-IdeaForge is a local-first pipeline for USB voice recorders (Z28/Z29 and similar). It copies recordings off the device, transcribes them on your Mac, optionally labels who said what, and produces structured meeting notes with action items — powered by **Grok** (default), **Claude** (opt-in), or **Ollama** (fully local).
+IdeaForge is a local-first pipeline for USB voice recorders (Z28/Z29 and similar). It copies recordings off the device, transcribes them on your Mac, optionally labels who said what, and produces either **structured meeting notes** (action items, decisions) or **Suno/Udio-ready song ideas** when you say a trigger phrase — powered by **Grok** (default), **Claude** (opt-in), or **Ollama** (fully local).
 
 ## How it works
 
@@ -72,8 +72,46 @@ USB recorder plugged in
 ### Processing modes
 
 - **`meeting`** — Executive summary, speaker identities, action items, decisions, follow-ups
-- **`creative`** — Song ideas, lyrics drafts, Suno v5.5 prompts
-- **`auto`** — LLM classifies transcript and picks the right schema
+- **`creative`** — Force song-idea pipeline on every recording
+- **`auto`** (recommended) — Meeting notes by default; **keyword trigger** at the start of a recording routes to song-idea mode
+
+### Song idea mode
+
+Say a trigger phrase at the **start** of your voice memo (default: **"song idea"**). IdeaForge detects it after transcription and produces copy-ready **Suno v5.5** and **Udio** blocks — style prompt, lyrics, and paste sidecars (`*_suno.txt`, `*_udio.txt`).
+
+Example memo opening:
+
+> "Song idea. Acoustic folk about fireflies on the porch — chorus should feel like a summer singalong."
+
+Configure your default styles and variations in `~/.config/ideaforge/config.toml`:
+
+```toml
+[processing]
+mode = "auto"            # meeting unless trigger phrase matches
+
+[creative]
+enabled = true
+trigger_phrases = ["song idea", "lyric idea"]
+temperature = 0.6
+
+[creative.suno]
+style_default = "acoustic folk, warm male vocal, fingerpicked guitar"
+style_variations = [
+  "acoustic folk, 85 BPM, porch-light ambience",
+]
+
+[creative.udio]
+style_default = "folk, mellow, warm, acoustic guitar"
+style_variations = [
+  "folk, nostalgic, gentle fingerpicking",
+]
+```
+
+Re-run on an existing transcript:
+
+```bash
+ideaforge --source ~/IdeaForge/2026-06-27 --llm-only --force
+```
 
 ## Quick start
 
@@ -291,13 +329,16 @@ The daemon and menu bar run as LaunchAgents. They do **not** re-read `config.tom
 
 | What changed | Action |
 |--------------|--------|
-| **`config.toml`** (archive path, daemon flags, models, `sync_device_clock`, etc.) | `launchctl kickstart -k gui/$(id -u)/com.ideaforge.daemon` |
+| **`config.toml`** (archive path, daemon flags, models, `sync_device_clock`, etc.) | `launchctl kickstart -k gui/$(id -u)/com.ideaforge.daemon` (or menubar **Restart Daemon**) |
 | **API keys or secrets** (`XAI_API_KEY`, `HF_TOKEN`, …) | `./scripts/install-daemon.sh` then kickstart (installer snapshots env into the plist) |
 | **Code upgrade** (`git pull`, `pip install -e`) | Reinstall in project venv, then kickstart — plist uses `$PROJECT/venv/bin/ideaforge` |
-| **Invalid config** | Daemon exits at startup; run `ideaforge --validate-config`, fix `~/.config/ideaforge/config.toml`, then kickstart |
-| **Menu bar app** (code or reinstall) | `./scripts/stop-menubar.sh` then `./scripts/install-menubar.sh`, or `launchctl kickstart -k gui/$(id -u)/com.ideaforge.menubar` |
+| **Invalid config / missing ffmpeg** | `ideaforge --doctor` and `ideaforge --validate-config`; fix, then kickstart |
+| **Menu bar app** (code or reinstall) | Menubar **Restart Menubar**, or `launchctl kickstart -k gui/$(id -u)/com.ideaforge.menubar` |
 
 ```bash
+# Health check (services, ffmpeg PATH, keys, failures, layout)
+ideaforge --doctor
+
 # Restart daemon (picks up config.toml + refreshed venv binary)
 launchctl kickstart -k gui/$(id -u)/com.ideaforge.daemon
 
@@ -308,11 +349,24 @@ launchctl kickstart -k gui/$(id -u)/com.ideaforge.menubar
 ideaforge --status
 ```
 
+LaunchAgent installers set `PATH` to include **Homebrew** (`/opt/homebrew/bin` and `/usr/local/bin`) so `ffmpeg` works for `merge_to_mp3` / normalize under launchd — not only in your interactive shell.
+
 Foreground `ideaforge --daemon` reads config and env from your current shell each run — useful when iterating on settings without kickstart.
 
 ## Menu bar progress
 
 Optional live progress in the macOS menu bar (stage, percent, ETA). The pipeline writes `~/Library/Application Support/IdeaForge/status.json`; the menubar app polls it every second.
+
+**Menu actions**
+
+| Item | What it does |
+|------|----------------|
+| **Open Notes** | Opens markdown from the last notes run (seeded from archive if empty) |
+| **Retry Failed Sessions** | Background `ideaforge --retry-failed` when failures are pending |
+| **Restart Daemon / Menubar** | `launchctl kickstart` for each LaunchAgent (independent) |
+| **Open Archive / Log / Status** | Finder / Terminal tail / `status.json` |
+
+After a run, the completion notification can open the notes file when **terminal-notifier** is installed (`brew install terminal-notifier`); click the banner to open the markdown.
 
 ```bash
 ./scripts/install-menubar.sh    # LaunchAgent (singleton — one instance)
@@ -328,7 +382,7 @@ When `max_parallel_sessions > 1`, the daemon can process multiple sessions at on
 
 ```toml
 [processing]
-max_parallel_sessions = 2   # default in example config; use 1 for fully sequential
+max_parallel_sessions = 1   # safest default; use 2 on 16 GB+ machines
 ```
 
 Start with `1` on memory-constrained machines; `2` is a good balance on Apple Silicon with Grok for summarization.
@@ -444,22 +498,27 @@ Everything lands under the archive root from config (default `~/IdeaForge`). Wit
 ├── office-z28/                  # when [[devices]] is configured
 │   ├── .processed_log.json      # per-device state (failures, hashes)
 │   └── YYYY-MM-DD/
-└── YYYY-MM-DD/                  # legacy flat layout (coexists after enabling [[devices]])
-    ├── R2026-06-27-07-43-11.WAV           # source chunk copied from device
-    ├── R2026-06-27-07-58-22.WAV           # second chunk (same session if gap ≤ chunk_gap_seconds)
-    ├── R2026-06-27-07-43-11_merged.WAV    # merged audio when multiple chunks are grouped
-    ├── R2026-06-27-07-43-11.txt             # transcript
-    ├── R2026-06-27-07-43-11_whisper.json    # whisper metadata
-    ├── R2026-06-27-07-43-11_segments.json   # timed segments
-    ├── R2026-06-27-07-43-11_turns.json      # diarization turn cache
-    ├── R2026-06-27-07-43-11_diarized.json   # speaker-labeled segments
-    ├── R2026-06-27-07-43-11_summary.md      # meeting notes (Markdown)
-    └── R2026-06-27-07-43-11_summary.json    # structured LLM output (action items, speakers, …)
+│       ├── 20260627 - Standup notes.md   # human-facing notes (date root — easy to find)
+│       └── R2026-06-27-07-43-11/         # one package per session
+│           ├── R2026-06-27-07-43-11.WAV
+│           ├── R2026-06-27-07-58-22.WAV   # extra chunk (same session if gap rule matches)
+│           ├── R2026-06-27-07-43-11_merged.wav
+│           ├── R2026-06-27-07-43-11.txt
+│           ├── R2026-06-27-07-43-11_*.json  # whisper / segments / turns / diarized / summary
+│           └── R2026-06-27-07-43-11_suno.txt  # creative sidecars when applicable
+└── YYYY-MM-DD/                  # legacy flat root (coexists after enabling [[devices]])
 ```
 
 **Sessions vs chunks:** Consecutive recorder splits (same meeting, gap ≤ `chunk_gap_seconds`, each chunk ≥ `merge_min_chunk_seconds`) merge into one session. The session stem is the **first chunk's filename**; outputs use that stem even when several `R*.WAV` files were merged.
 
-**Derived files:** `*_merged.WAV` files are pipeline artifacts — they are not re-ingested or re-processed as source audio. The daemon prunes leftovers older than `merged_wav_retain_days` (default 3) during daily log rotation; set to `0` to keep them.
+**Layout:** New runs write **Markdown notes at the date-folder root** (`YYYYMMDD - Title.md`) and put audio, transcripts, and ML sidecars under `R…/` session packages. Older flat date folders still work (dual-read). To reorganize an existing archive:
+
+```bash
+ideaforge --migrate-layout --source ~/IdeaForge --dry-run
+ideaforge --migrate-layout --source ~/IdeaForge
+```
+
+**Derived files:** Multi-chunk joins are pipeline artifacts (`*_merged.wav` during ML; after success `*_merged.mp3` when `merge_to_mp3 = true`). They are not re-ingested as source audio. The daemon prunes leftovers older than `merged_wav_retain_days` (default 3) during daily log rotation; set to `0` to keep them.
 
 **Runtime state (outside the archive):**
 
@@ -771,7 +830,9 @@ ideaforge/
 ├── audio_util.py   # ffmpeg-free audio loader + WAV merge
 ├── llm.py          # Grok / Claude / Ollama backends
 ├── export.py       # Apple Reminders + Obsidian action item export
-├── prompts.py      # Meeting and creative prompts
+├── prompts.py      # Meeting and song-idea prompts
+├── creative_intent.py   # Keyword trigger detection
+├── creative_platforms.py  # Suno/Udio formatters and sidecars
 ├── schema.py       # MeetingNotes, SpeakerIdentity, etc.
 ├── config.py       # TOML + .env loading
 ├── notify.py       # macOS completion notifications

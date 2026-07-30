@@ -6,11 +6,13 @@ import json
 import os
 import platform
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
 import time
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -110,6 +112,170 @@ def _launch_agent_installed(label: str) -> bool:
     return plist.is_file()
 
 
+def launch_agent_domain() -> str:
+    return f"gui/{os.getuid()}"
+
+
+def daemon_plist_path() -> Path:
+    return Path.home() / "Library/LaunchAgents" / f"{DAEMON_LABEL}.plist"
+
+
+def menubar_plist_path() -> Path:
+    return Path.home() / "Library/LaunchAgents" / f"{MENUBAR_LABEL}.plist"
+
+
+def _run_launchctl(args: List[str], *, timeout: float = 30.0) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["launchctl", *args],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+
+
+def _unload_launch_agent(plist: Path, label: str) -> None:
+    domain = launch_agent_domain()
+    for cmd in (
+        ["bootout", f"{domain}/{label}"],
+        ["bootout", domain, str(plist)],
+        ["unload", str(plist)],
+        ["disable", f"{domain}/{label}"],
+    ):
+        _run_launchctl(cmd)
+
+
+def _load_launch_agent(plist: Path, label: str) -> tuple[bool, str]:
+    if not plist.is_file():
+        return False, f"Plist not found: {plist}"
+
+    domain = launch_agent_domain()
+    _unload_launch_agent(plist, label)
+    time.sleep(0.5)
+
+    bootstrapped = _run_launchctl(["bootstrap", domain, str(plist)])
+    if bootstrapped.returncode == 0:
+        _run_launchctl(["enable", f"{domain}/{label}"])
+    else:
+        loaded = _run_launchctl(["load", "-w", str(plist)])
+        if loaded.returncode != 0:
+            detail = (loaded.stderr or loaded.stdout or "launchctl load failed").strip()
+            return False, detail
+
+    kicked = _run_launchctl(["kickstart", "-k", f"{domain}/{label}"])
+    if kicked.returncode != 0:
+        detail = (kicked.stderr or kicked.stdout or "launchctl kickstart failed").strip()
+        return False, detail
+    return True, "Daemon started"
+
+
+def stop_daemon_service() -> tuple[bool, str]:
+    """Stop the IdeaForge LaunchAgent without removing the plist."""
+    if not _is_darwin():
+        return False, "Daemon control is macOS only"
+    plist = daemon_plist_path()
+    if not plist.is_file():
+        return False, "Daemon not installed — run ./scripts/install-daemon.sh"
+    _unload_launch_agent(plist, DAEMON_LABEL)
+    return True, "Daemon stopped"
+
+
+def start_daemon_service() -> tuple[bool, str]:
+    """Load and start the IdeaForge LaunchAgent from its plist."""
+    if not _is_darwin():
+        return False, "Daemon control is macOS only"
+    return _load_launch_agent(daemon_plist_path(), DAEMON_LABEL)
+
+
+def restart_daemon_service() -> tuple[bool, str]:
+    """Restart the daemon via launchctl kickstart, falling back to a full load."""
+    if not _is_darwin():
+        return False, "Daemon control is macOS only"
+    plist = daemon_plist_path()
+    if not plist.is_file():
+        return False, "Daemon not installed — run ./scripts/install-daemon.sh"
+
+    domain = launch_agent_domain()
+    _run_launchctl(["enable", f"{domain}/{DAEMON_LABEL}"])
+    kicked = _run_launchctl(["kickstart", "-k", f"{domain}/{DAEMON_LABEL}"])
+    if kicked.returncode == 0:
+        return True, "Daemon restarted"
+    return _load_launch_agent(plist, DAEMON_LABEL)
+
+
+def restart_menubar_service() -> tuple[bool, str]:
+    """Restart the menu bar LaunchAgent via kickstart, falling back to full load."""
+    if not _is_darwin():
+        return False, "Menubar control is macOS only"
+    plist = menubar_plist_path()
+    if not plist.is_file():
+        return False, "Menubar not installed — run ./scripts/install-menubar.sh"
+
+    domain = launch_agent_domain()
+    _run_launchctl(["enable", f"{domain}/{MENUBAR_LABEL}"])
+    kicked = _run_launchctl(["kickstart", "-k", f"{domain}/{MENUBAR_LABEL}"])
+    if kicked.returncode == 0:
+        return True, "Menubar restarted"
+    ok, message = _load_launch_agent(plist, MENUBAR_LABEL)
+    if ok:
+        return True, "Menubar restarted"
+    return False, message
+
+
+def resolve_ideaforge_binary() -> Optional[Path]:
+    """Locate the ideaforge CLI (venv near package, PATH, or common install paths)."""
+    candidates: List[Path] = []
+    which = shutil.which("ideaforge")
+    if which:
+        candidates.append(Path(which))
+    candidates.append(Path(sys.executable).resolve().parent / "ideaforge")
+    pkg_root = Path(__file__).resolve().parent.parent
+    candidates.append(pkg_root / "venv" / "bin" / "ideaforge")
+    for path in candidates:
+        if path.is_file() and os.access(path, os.X_OK):
+            return path
+    return None
+
+
+def start_retry_failed_job(cfg: IdeaForgeConfig) -> tuple[bool, str]:
+    """Spawn ``ideaforge --retry-failed`` in the background; return (ok, message)."""
+    from ideaforge.archive_status import pending_failure_count
+    from ideaforge.device_registry import list_device_archive_roots
+
+    if pending_failure_count(cfg) <= 0:
+        return False, "No pending failed sessions"
+
+    binary = resolve_ideaforge_binary()
+    if binary is None:
+        return False, "ideaforge binary not found — activate venv or reinstall"
+
+    roots = list_device_archive_roots(cfg)
+    if len(roots) == 1:
+        source = roots[0][1]
+    else:
+        source = cfg.archive.expanduser()
+
+    log_dir = Path.home() / "Library" / "Logs" / "ideaforge"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / "retry-failed.log"
+    stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+    cmd = [str(binary), "--source", str(source), "--retry-failed"]
+    try:
+        with log_path.open("a", encoding="utf-8") as log_handle:
+            log_handle.write(f"\n--- retry-failed {stamp} ---\n")
+            log_handle.flush()
+            subprocess.Popen(
+                cmd,
+                stdout=log_handle,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+    except OSError as exc:
+        return False, f"Failed to start retry: {exc}"
+
+    return True, f"Retry started — log: {log_path}"
+
+
 def check_daemon_health() -> ServiceHealth:
     pid = _pgrep_first(r"run-daemon\.sh|ideaforge.*--daemon")
     return ServiceHealth(
@@ -155,6 +321,8 @@ def _pipeline_lines(status: PipelineStatus) -> List[str]:
         lines.append(f"  Session:    {status.session}/{status.sessions_total}")
     if status.error:
         lines.append(f"  Error:      {status.error}")
+    if status.output_intent:
+        lines.append(f"  Intent:     {status.output_intent}")
     if status.updated_at:
         lines.append(f"  Updated:    {status.updated_at}")
     status_path = default_status_path()

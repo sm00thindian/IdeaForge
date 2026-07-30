@@ -53,6 +53,8 @@ cat > "$PLIST_PATH" <<EOF
         <string>$IDEAFORGE_BIN</string>
         <key>PYTHONUNBUFFERED</key>
         <string>1</string>
+        <key>PATH</key>
+        <string>$(ideaforge_launchd_path)</string>
 $ENV_XML    </dict>
     <key>WorkingDirectory</key>
     <string>$ROOT</string>

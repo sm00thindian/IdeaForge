@@ -208,6 +208,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Rename existing *_summary.md files to YYYYMMDD - title.md (--source required)",
     )
     parser.add_argument(
+        "--migrate-layout",
+        action="store_true",
+        help=(
+            "Move flat date-folder session files into per-session subfolders "
+            "(--source required; use --dry-run to preview)"
+        ),
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="With --migrate-layout: show planned moves without changing files",
+    )
+    parser.add_argument(
         "--from",
         dest="reprocess_from",
         metavar="DATE",
@@ -240,6 +253,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--validate-config",
         action="store_true",
         help="Validate config.toml and exit",
+    )
+    parser.add_argument(
+        "--doctor",
+        action="store_true",
+        help="Check services, PATH tools, API keys, archive layout, and failures",
     )
     parser.add_argument(
         "--status",
@@ -485,12 +503,23 @@ def main(argv: Optional[list] = None) -> int:
 
         path = args.config or IdeaForgeConfig().default_config_path()
         try:
-            validate_config_file(path)
+            validate_config_file(path, check_runtime=True)
         except ConfigValidationError as exc:
             print(f"❌ Invalid config ({path}):\n{exc}")
             return 1
         print(f"✓ Config OK — {path}")
         return 0
+
+    if args.doctor:
+        from ideaforge.doctor import print_doctor_report
+
+        cfg.resolve_secrets()
+        path = args.config or cfg.default_config_path()
+        return print_doctor_report(
+            cfg,
+            config_path=path if path.is_file() else None,
+            as_json=args.status_json,
+        )
 
     if args.detect:
         devices = find_recorder_mounts(cfg=cfg)
@@ -550,10 +579,18 @@ def main(argv: Optional[list] = None) -> int:
             return 1
 
         from ideaforge.daemon import run_device_ingest
+        from ideaforge.device import device_from_mount
+        from ideaforge.device_registry import archive_device_root
 
+        device = device_from_mount(source, cfg)
+        ingest_archive = (
+            archive_device_root(cfg, device.device_name)
+            if device is not None
+            else archive
+        )
         ingest = run_device_ingest(
             source,
-            archive,
+            ingest_archive,
             cfg,
             unmount_after=not args.no_unmount,
         )
@@ -589,6 +626,33 @@ def main(argv: Optional[list] = None) -> int:
         print(f"✓ Renamed {len(renamed)} meeting note(s):")
         for path in renamed:
             print(f"   {path.name}")
+        return 0
+
+    if args.migrate_layout:
+        if not args.source:
+            parser.error(
+                "--migrate-layout requires --source pointing at a date folder, "
+                "device archive, or archive root"
+            )
+        from ideaforge.session_layout import migrate_archive_layout
+
+        source = args.source.expanduser().resolve()
+        if not source.is_dir():
+            print(f"❌ Source not found: {source}")
+            return 1
+        dry_run = bool(getattr(args, "dry_run", False))
+        moves = migrate_archive_layout(source, dry_run=dry_run)
+        if not moves:
+            print("✓ Nothing to migrate — already nested or no flat session files")
+            return 0
+        label = "Would move" if dry_run else "Moved"
+        print(f"✓ {label} {len(moves)} file(s) into session packages:")
+        for src, dest in moves[:50]:
+            print(f"   {src.parent.name}/{src.name} → {dest.parent.name}/{dest.name}")
+        if len(moves) > 50:
+            print(f"   … and {len(moves) - 50} more")
+        if dry_run:
+            print("\nRe-run without --dry-run to apply.")
         return 0
 
     if args.reprocess:

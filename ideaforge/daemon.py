@@ -366,17 +366,64 @@ class RecorderWatcher:
             pipeline_result.files_processed > 0 or pipeline_result.files_skipped > 0
         ):
             notify_process_complete(pipeline_result, device_label=device.label)
+        # ML can take hours. The volume may remount (or new files may appear)
+        # while process_fn blocks — never treat a *changed* device as already done.
+        self._update_snapshot_after_process(mount_key, pre_process_snap=snap)
+        return pipeline_result
+
+    def _update_snapshot_after_process(
+        self,
+        mount_key: str,
+        *,
+        pre_process_snap: DeviceSnapshot,
+    ) -> None:
+        """Refresh device fingerprint after a pipeline run without skipping leftovers.
+
+        Ingest normally clears and unmounts before ML. While ML runs (often hours),
+        macOS may remount the volume and new recordings can appear. If we snapshot
+        those leftovers as "handled", the daemon idles with files still on device.
+
+        Rules:
+        - Mount gone → forget state (clean unmount that stayed unmounted).
+        - Mount empty → record empty snapshot; unmount again if configured.
+        - Mount has recordings that differ from pre-process → clear snapshot so
+          the next tick re-ingests (the race this fixes).
+        - Mount still has the *same* pre-process contents → mark handled so we
+          do not loop forever when purge is off or process_fn is a no-op mock.
+        """
         refreshed = find_recorder_mounts(cfg=self.cfg)
         refreshed_device = None
         for candidate in refreshed:
             if str(candidate.mount_path) == mount_key:
                 refreshed_device = candidate
                 break
-        if refreshed_device is not None:
-            self._last_snapshot[mount_key] = snapshot_device(refreshed_device)
-        else:
-            self._last_snapshot[mount_key] = snap
-        return pipeline_result
+        if refreshed_device is None:
+            self._forget_mount(mount_key)
+            return
+
+        post_snap = snapshot_device(refreshed_device)
+        if post_snap.recording_count == 0:
+            self._last_snapshot[mount_key] = post_snap
+            if self.cfg.daemon_unmount_after_ingest:
+                label = refreshed_device.mount_path.name
+                if unmount_volume(refreshed_device.mount_path):
+                    print(f"   📴 Unmounted {label}")
+                    self._forget_mount(mount_key)
+                else:
+                    print(f"   ⚠️  Could not unmount {label}")
+            return
+
+        if post_snap != pre_process_snap:
+            # New or different files appeared while process_fn blocked.
+            self._last_snapshot.pop(mount_key, None)
+            self._idle_announced.discard(mount_key)
+            print(
+                f"   ⚠️  {post_snap.recording_count} recording(s) still on "
+                f"{refreshed_device.label} after process — will re-ingest next poll"
+            )
+            return
+
+        self._last_snapshot[mount_key] = post_snap
 
     def _select_device(self, devices: list[RecorderDevice]) -> Optional[RecorderDevice]:
         """Pick the first device that needs processing this tick."""
@@ -434,7 +481,7 @@ def run_daemon(
     path = config_path or cfg.default_config_path()
     if path.is_file():
         try:
-            validate_config_file(path)
+            validate_config_file(path, check_runtime=True)
         except ConfigValidationError as exc:
             print(f"❌ Invalid config ({path}):\n{exc}", file=sys.stderr)
             return 1

@@ -4,9 +4,28 @@ All notable changes to IdeaForge are documented here. Format follows [Keep a Cha
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-30
+
 ### Added
 
-- **Merged WAV retention** — Daily log rotation also prunes leftover `*_merged.wav` artifacts older than `daemon.merged_wav_retain_days` (default 3; `0` disables).
+- **Creative / song-idea mode** — `processing.mode = auto|meeting|creative` with keyword triggers (`creative_intent.py`), Suno v5.5 + Udio formatters and sidecars (`creative_platforms.py`).
+- **Session-folder archive layout** — Date folders keep friendly `YYYYMMDD - Title.md` notes at the root; each recording lives under `R…/` with audio, transcript, and ML sidecars (`session_layout.py`). Dual-read for legacy flat archives; `ideaforge --migrate-layout --source …` reorganizes existing trees (`--dry-run` supported).
+- **`merge_to_mp3`** (default `true`) — After a successful multi-chunk session, encode `*_merged.wav` → `*_merged.mp3` and delete the large WAV. Bitrate via `merge_mp3_bitrate` (default `64k`).
+- **`max_session_seconds`** (default 4h) — Caps multi-chunk merges under Apple Metal’s ~4 GiB buffer limit.
+- **Merged WAV retention** — Daily log rotation prunes leftover `*_merged.wav` / `.mp3` older than `daemon.merged_wav_retain_days` (default 3).
+- **Menubar Open Notes** — Links to last-run markdown (`last_notes.json`); replaced when new notes are written; seeded from archive when empty.
+- **Menubar Retry Failed Sessions** — Spawns background `--retry-failed` when failures are pending.
+- **Menubar Restart Menubar** — Kickstarts `com.ideaforge.menubar` independently of the daemon.
+- **`ideaforge --doctor`** — Services, ffmpeg/rsync PATH, API keys, archive layout, pending failures.
+- **Runtime footgun warnings** — `--validate-config` and daemon startup warn on missing ffmpeg (merge/normalize), HF token (diarize), LLM keys.
+- **Notification open-on-click** — With `terminal-notifier`, completion notifications open the markdown notes file.
+- **LaunchAgent PATH** — Installers/wrappers include Homebrew paths so ffmpeg works under launchd (menubar + daemon).
+- **Config presets** — `config.toml.example` documents meeting-minimal, meeting+diarize, song-auto, and 8 GB vs 16 GB+ defaults (`max_parallel_sessions = 1` in example).
+
+### Fixed
+
+- **Defer chunk purge until session succeeds** — Source WAVs are no longer deleted immediately after merge, so a Metal OOM mid-pipeline remains recoverable.
+- **Failed-session retry finds leftover merges** — When chunk paths in the failure log are gone, retry falls back to `{stem}_merged.wav` / `{stem}_merged.mp3`.
 
 ## [1.1.0] - 2026-06-30
 

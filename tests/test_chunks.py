@@ -8,9 +8,11 @@ import wave
 
 from ideaforge.chunks import (
     RecordingGroup,
+    cap_groups_by_max_duration,
     chunks_are_continuation,
     group_recordings,
     parse_recording_timestamp,
+    prepare_session_groups,
 )
 from ideaforge.chunks import _chunk_from_path
 
@@ -28,6 +30,8 @@ def _write_wav(path: Path, *, duration_seconds: float, sample_rate: int = 12000)
 def test_parse_recording_timestamp():
     ts = parse_recording_timestamp(Path("R2025-07-07-17-00-00.WAV"))
     assert ts == datetime(2025, 7, 7, 17, 0, 0)
+    vor = parse_recording_timestamp(Path("V2118-10-05-12-48-15.WAV"))
+    assert vor == datetime(2118, 10, 5, 12, 48, 15)
     assert parse_recording_timestamp(Path("meeting.wav")) is None
 
 
@@ -97,6 +101,47 @@ def test_group_recordings_merges_partial_final_segment(tmp_path: Path):
     groups = group_recordings([first, second], chunk_gap_seconds=30, merge_min_chunk_seconds=600)
     assert len(groups) == 1
     assert len(groups[0].files) == 2
+
+
+def test_cap_groups_by_max_duration_splits_overnight_merge(tmp_path: Path):
+    """Leave-on recorder: many 15-min chunks must not become one multi-hour session."""
+    base = datetime(2026, 10, 6, 19, 38, 2)
+    files = []
+    for index in range(8):  # 8 × 15 min = 2h
+        ts = base + timedelta(minutes=15 * index)
+        path = tmp_path / ts.strftime("R%Y-%m-%d-%H-%M-%S.WAV")
+        _write_wav(path, duration_seconds=15 * 60)
+        files.append(path)
+
+    groups = group_recordings(files, chunk_gap_seconds=30, merge_min_chunk_seconds=600)
+    assert len(groups) == 1
+    assert len(groups[0].files) == 8
+
+    capped = cap_groups_by_max_duration(groups, max_session_seconds=3600)  # 1h
+    assert len(capped) == 2
+    assert [len(g.files) for g in capped] == [4, 4]
+    assert capped[0].session_stem == files[0].stem
+    assert capped[1].session_stem == files[4].stem
+
+
+def test_prepare_session_groups_applies_max_session_seconds(tmp_path: Path):
+    base = datetime(2026, 10, 6, 19, 0, 0)
+    files = []
+    for index in range(6):
+        ts = base + timedelta(minutes=15 * index)
+        path = tmp_path / ts.strftime("R%Y-%m-%d-%H-%M-%S.WAV")
+        _write_wav(path, duration_seconds=15 * 60)
+        files.append(path)
+
+    groups = prepare_session_groups(
+        files,
+        merge_chunks=True,
+        chunk_mode="gap",
+        chunk_gap_seconds=30,
+        merge_min_chunk_seconds=600,
+        max_session_seconds=3600,
+    )
+    assert len(groups) == 2
 
 
 def test_group_recordings_disabled(tmp_path: Path):

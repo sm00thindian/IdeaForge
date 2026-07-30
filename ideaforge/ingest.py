@@ -39,19 +39,24 @@ def is_derived_audio(path: Path) -> bool:
     return path.stem.endswith("_merged")
 
 
-def iter_merged_wav_files(archive_root: Path) -> List[Path]:
-    """Find ``*_merged.wav`` pipeline artifacts under the archive root."""
+def iter_merged_audio_files(archive_root: Path) -> List[Path]:
+    """Find ``*_merged.wav`` / ``*_merged.mp3`` pipeline artifacts under the archive."""
     if not archive_root.is_dir():
         return []
     found: List[Path] = []
     for path in archive_root.rglob("*"):
         if not path.is_file():
             continue
-        if path.suffix.lower() != ".wav":
+        if path.suffix.lower() not in {".wav", ".mp3"}:
             continue
         if is_derived_audio(path):
             found.append(path)
     return sorted(found)
+
+
+# Back-compat alias used by older tests/callers.
+def iter_merged_wav_files(archive_root: Path) -> List[Path]:
+    return iter_merged_audio_files(archive_root)
 
 
 def prune_old_merged_wavs(
@@ -61,10 +66,10 @@ def prune_old_merged_wavs(
     now: Optional[datetime] = None,
 ) -> List[Path]:
     """
-    Delete leftover ``*_merged.wav`` files older than ``retain_days``.
+    Delete leftover ``*_merged.wav`` / ``*_merged.mp3`` older than ``retain_days``.
 
-    These multi-chunk merge artifacts are large and unneeded once notes are
-    verified. ``retain_days <= 0`` disables pruning. Returns paths removed.
+    Multi-chunk merge artifacts are unneeded once notes are verified.
+    ``retain_days <= 0`` disables pruning. Returns paths removed.
     """
     if retain_days <= 0:
         return []
@@ -73,7 +78,7 @@ def prune_old_merged_wavs(
 
     cutoff = (now or datetime.now()).timestamp() - (retain_days * 86_400)
     removed: List[Path] = []
-    for path in iter_merged_wav_files(archive_root):
+    for path in iter_merged_audio_files(archive_root):
         try:
             if path.stat().st_mtime >= cutoff:
                 continue
@@ -161,10 +166,25 @@ def find_archive_copy(
             candidates.append(Path(entry["archive"]))
 
     dest_folder = archive_folder_for_file(source, archive_root)
+    session_folder = dest_folder / source.stem
     candidates.extend([
         dest_folder / source.name,
         dest_folder / f"{source.stem}_{source_hash[:10]}{source.suffix}",
+        # Nested session package layout
+        session_folder / source.name,
+        session_folder / f"{source.stem}_{source_hash[:10]}{source.suffix}",
     ])
+    # Other session packages under the date folder (multi-chunk sessions).
+    if dest_folder.is_dir():
+        try:
+            for child in dest_folder.iterdir():
+                if child.is_dir() and not child.name.startswith("."):
+                    candidates.append(child / source.name)
+                    candidates.append(
+                        child / f"{source.stem}_{source_hash[:10]}{source.suffix}"
+                    )
+        except OSError:
+            pass
 
     seen: Set[str] = set()
     for candidate in candidates:
@@ -326,6 +346,9 @@ def archive_paths_for_failed_sessions(
     paths: List[Path] = []
     seen: Set[str] = set()
     for entry in normalize_processed_log(log).get("failures", {}).values():
+        folder_str = entry.get("archive_folder")
+        stem = str(entry.get("session_stem") or "")
+        found_any = False
         for path_str in entry.get("archive_files", []):
             candidate = Path(path_str)
             key = str(candidate)
@@ -336,10 +359,40 @@ def archive_paths_for_failed_sessions(
                     continue
             except OSError:
                 continue
+            # Prefer non-derived sources; allow derived only as last resort below.
             if is_derived_audio(candidate):
                 continue
             seen.add(key)
             paths.append(candidate)
+            found_any = True
+        # Chunks may have been purged after merge before a Metal OOM — fall back
+        # to the leftover merged WAV so retry/reprocess can still run.
+        if not found_any and folder_str and stem:
+            folder = Path(folder_str)
+            for name in (
+                f"{stem}_merged.wav",
+                f"{stem}_merged.WAV",
+                f"{stem}_merged.mp3",
+                f"{stem}_merged.MP3",
+                f"{stem}.wav",
+                f"{stem}.WAV",
+            ):
+                for base in (folder, folder / stem):
+                    candidate = base / name
+                    key = str(candidate)
+                    if key in seen or not candidate.is_file():
+                        continue
+                    try:
+                        if candidate.stat().st_size < min_size_bytes:
+                            continue
+                    except OSError:
+                        continue
+                    seen.add(key)
+                    paths.append(candidate)
+                    found_any = True
+                    break
+                if found_any:
+                    break
     return sorted(paths, key=lambda p: p.stat().st_mtime)
 
 

@@ -133,6 +133,69 @@ def test_tick_runs_when_new_recording_added(tmp_path: Path, monkeypatch):
     process_fn.assert_called_once()
 
 
+def test_tick_reingests_when_files_appear_during_process(tmp_path: Path, monkeypatch, capsys):
+    """Regression: remount/new WAVs during long ML must not be snapshotted as done."""
+    device = _device(tmp_path, count=2)
+    process_fn = MagicMock(return_value=ProcessResult(files_processed=1))
+    watcher = _watcher(process_fn=process_fn)
+
+    def process_and_replace_files(*args, **kwargs):
+        # Simulate ingest clearing the original set, then new files appearing
+        # on a remount while ML runs.
+        for wav in device.record_folder.glob("*.WAV"):
+            wav.unlink()
+        leftover = device.record_folder / "R2026-06-28-09-00-00.WAV"
+        leftover.write_bytes(b"\x00" * 1000)
+        return ProcessResult(files_processed=1)
+
+    process_fn.side_effect = process_and_replace_files
+    monkeypatch.setattr(
+        "ideaforge.daemon.find_recorder_mounts",
+        lambda *args, **kwargs: [device],
+    )
+
+    result = watcher.tick()
+    assert result.files_processed == 1
+    mount_key = str(device.mount_path)
+    assert mount_key not in watcher._last_snapshot
+    out = capsys.readouterr().out
+    assert "will re-ingest next poll" in out
+
+    # Next tick must run again for the leftovers, not announce idle.
+    process_fn.side_effect = None
+    process_fn.return_value = ProcessResult(files_processed=1)
+    process_fn.reset_mock()
+    result2 = watcher.tick()
+    assert result2.files_processed == 1
+    process_fn.assert_called_once()
+
+
+def test_tick_unmounts_empty_remount_after_process(tmp_path: Path, monkeypatch, capsys):
+    """If volume remounts empty during ML, eject it again when configured."""
+    device = _device(tmp_path, count=1)
+
+    def process_and_clear(*args, **kwargs):
+        for wav in device.record_folder.glob("*.WAV"):
+            wav.unlink()
+        return ProcessResult(files_processed=1)
+
+    unmount = MagicMock(return_value=True)
+    watcher = _watcher(
+        cfg=IdeaForgeConfig(daemon_unmount_after_ingest=True),
+        process_fn=process_and_clear,
+    )
+    monkeypatch.setattr(
+        "ideaforge.daemon.find_recorder_mounts",
+        lambda *args, **kwargs: [device],
+    )
+    monkeypatch.setattr("ideaforge.daemon.unmount_volume", unmount)
+
+    watcher.tick()
+    unmount.assert_called_once_with(device.mount_path)
+    assert "Unmounted" in capsys.readouterr().out
+    assert str(device.mount_path) not in watcher._last_snapshot
+
+
 def test_tick_skips_multiple_devices(tmp_path: Path, monkeypatch):
     device_a = _device(tmp_path / "a")
     device_b = _device(tmp_path / "b")

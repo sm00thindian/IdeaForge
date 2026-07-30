@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Set
 
@@ -18,8 +20,27 @@ TOP_LEVEL_KEYS: Set[str] = {
     "daemon",
     "export",
     "sync",
+    "creative",
     "audio_extensions",
 }
+
+CREATIVE_SECTION_KEYS: Set[str] = {
+    "enabled",
+    "trigger_phrases",
+    "scan_chars",
+    "temperature",
+    "style_merge",
+    "target_duration_minutes",
+    "rhyme_scheme",
+    "suno",
+    "udio",
+}
+
+RHYME_SCHEMES = {"abab", "aabb", "mixed"}
+
+CREATIVE_PLATFORM_KEYS: Set[str] = {"style_default", "style_variations"}
+
+STYLE_MERGE_STRATEGIES = {"merge", "memo_wins", "pick_first", "pick_random"}
 
 SECTION_KEYS: Dict[str, Set[str]] = {
     "llm": {"backend", "ollama_model", "grok_model", "claude_model"},
@@ -36,10 +57,14 @@ SECTION_KEYS: Dict[str, Set[str]] = {
         "output_format",
         "diarize",
         "min_file_size_bytes",
+        "delete_empty_merged_audio",
         "merge_chunks",
+        "merge_to_mp3",
+        "merge_mp3_bitrate",
         "chunk_mode",
         "chunk_gap_seconds",
         "merge_min_chunk_seconds",
+        "max_session_seconds",
         "split_silence_seconds",
         "split_window_seconds",
         "normalize_audio",
@@ -114,6 +139,18 @@ def find_unknown_keys(data: Mapping[str, Any]) -> List[str]:
         for key in block:
             if key not in allowed:
                 issues.append(f"unknown [{section}] key '{key}'")
+
+    creative = data.get("creative")
+    if isinstance(creative, dict):
+        for key in creative:
+            if key not in CREATIVE_SECTION_KEYS:
+                issues.append(f"unknown [creative] key '{key}'")
+        for platform_key in ("suno", "udio"):
+            platform = creative.get(platform_key)
+            if isinstance(platform, dict):
+                for key in platform:
+                    if key not in CREATIVE_PLATFORM_KEYS:
+                        issues.append(f"unknown [creative.{platform_key}] key '{key}'")
     return issues
 
 
@@ -162,6 +199,19 @@ def validate_config_values(cfg: IdeaForgeConfig) -> List[str]:
         issues.append("processing.chunk_gap_seconds must be >= 0")
     if cfg.merge_min_chunk_seconds < 0:
         issues.append("processing.merge_min_chunk_seconds must be >= 0")
+    if cfg.max_session_seconds < 0:
+        issues.append("processing.max_session_seconds must be >= 0 (0 disables cap)")
+    bitrate = cfg.merge_mp3_bitrate.strip().lower()
+    if cfg.merge_to_mp3 and not bitrate:
+        issues.append("processing.merge_mp3_bitrate must be non-empty when merge_to_mp3 is true")
+    elif bitrate and not (
+        bitrate.endswith("k") and bitrate[:-1].isdigit()
+    ) and not bitrate.isdigit():
+        # Accept "64k", "128k", or bare "64"
+        issues.append(
+            "processing.merge_mp3_bitrate must look like '64k' or '128' "
+            f"(got {cfg.merge_mp3_bitrate!r})"
+        )
     if cfg.chunk_mode not in CHUNK_MODES:
         issues.append(
             f"invalid processing.chunk_mode '{cfg.chunk_mode}' "
@@ -179,6 +229,24 @@ def validate_config_values(cfg: IdeaForgeConfig) -> List[str]:
         )
     if cfg.sync_enabled and not cfg.sync_target.strip():
         issues.append("sync.target must be set when sync.enabled = true")
+    if cfg.creative_scan_chars < 50:
+        issues.append("creative.scan_chars must be >= 50")
+    if not 0.0 <= cfg.creative_temperature <= 2.0:
+        issues.append("creative.temperature must be between 0.0 and 2.0")
+    if cfg.creative_style_merge not in STYLE_MERGE_STRATEGIES:
+        issues.append(
+            f"invalid creative.style_merge '{cfg.creative_style_merge}' "
+            f"(expected one of {sorted(STYLE_MERGE_STRATEGIES)})"
+        )
+    if cfg.creative_enabled and not cfg.creative_trigger_phrases:
+        issues.append("creative.trigger_phrases must not be empty when creative.enabled = true")
+    if cfg.creative_target_duration_minutes <= 0:
+        issues.append("creative.target_duration_minutes must be > 0")
+    if cfg.creative_rhyme_scheme not in RHYME_SCHEMES:
+        issues.append(
+            f"invalid creative.rhyme_scheme '{cfg.creative_rhyme_scheme}' "
+            f"(expected one of {sorted(RHYME_SCHEMES)})"
+        )
 
     device_names: Set[str] = set()
     for device in cfg.devices:
@@ -225,6 +293,82 @@ def validate_config_paths(cfg: IdeaForgeConfig) -> List[str]:
     return issues
 
 
+def _tool_on_path(name: str) -> Optional[str]:
+    found = shutil.which(name)
+    return found
+
+
+def collect_runtime_warnings(cfg: IdeaForgeConfig) -> List[str]:
+    """Soft environment checks operators should fix before long daemon runs.
+
+    These are warnings (not schema errors): missing tools/keys degrade features
+    rather than making config.toml invalid.
+    """
+    from ideaforge.config import has_anthropic_api_key, has_xai_api_key
+
+    warnings: List[str] = []
+    if not _tool_on_path("ffmpeg"):
+        if cfg.merge_to_mp3:
+            warnings.append(
+                "ffmpeg not found on PATH — processing.merge_to_mp3 will be skipped "
+                "(install ffmpeg; re-run ./scripts/install-daemon.sh so LaunchAgent PATH includes Homebrew)"
+            )
+        if cfg.normalize_audio:
+            warnings.append(
+                "ffmpeg not found on PATH — processing.normalize_audio cannot convert "
+                "MP3/FLAC (WAV-only ingest still works)"
+            )
+        if cfg.chunk_mode in ("silence", "fixed_window"):
+            warnings.append(
+                f"ffmpeg not found on PATH — processing.chunk_mode={cfg.chunk_mode!r} "
+                "requires ffmpeg"
+            )
+    if cfg.sync_enabled and not _tool_on_path("rsync"):
+        warnings.append(
+            "rsync not found on PATH — sync.enabled jobs will fail "
+            "(install rsync or disable [sync])"
+        )
+
+    hf_token = (
+        (cfg.hf_token or "").strip()
+        or (os.environ.get("HF_TOKEN") or "").strip()
+        or (os.environ.get("HUGGINGFACE_TOKEN") or "").strip()
+    )
+    if cfg.diarize and not hf_token:
+        warnings.append(
+            "processing.diarize is true but HF_TOKEN is not set — "
+            "pyannote diarization will fail (set hf_token or HF_TOKEN, then reinstall daemon)"
+        )
+
+    backend = (cfg.llm_backend or "auto").strip().lower()
+    if backend == "grok" and not has_xai_api_key():
+        warnings.append(
+            "llm.backend is 'grok' but XAI_API_KEY is not set — "
+            "export the key and re-run ./scripts/install-daemon.sh"
+        )
+    elif backend == "claude" and not has_anthropic_api_key():
+        warnings.append(
+            "llm.backend is 'claude' but ANTHROPIC_API_KEY is not set — "
+            "export the key and re-run ./scripts/install-daemon.sh"
+        )
+    elif backend == "auto" and not has_xai_api_key():
+        warnings.append(
+            "XAI_API_KEY not set — llm.backend=auto will use Ollama (local). "
+            "Set XAI_API_KEY for Grok and reinstall the daemon to snapshot the key."
+        )
+
+    return warnings
+
+
+def print_runtime_warnings(warnings: List[str], *, stream=None) -> None:
+    """Print runtime warnings to stdout (or stream)."""
+    import sys
+
+    out = stream or sys.stdout
+    for item in warnings:
+        print(f"⚠️  {item}", file=out)
+
+
 def validate_config(
     cfg: IdeaForgeConfig,
     *,
@@ -242,8 +386,17 @@ def validate_config(
         raise ConfigValidationError("\n".join(f"  • {item}" for item in issues))
 
 
-def validate_config_file(path: Path, *, check_paths: bool = True) -> IdeaForgeConfig:
-    """Load and validate config.toml; raise ConfigValidationError on failure."""
+def validate_config_file(
+    path: Path,
+    *,
+    check_paths: bool = True,
+    check_runtime: bool = False,
+) -> IdeaForgeConfig:
+    """Load and validate config.toml; raise ConfigValidationError on failure.
+
+    When ``check_runtime`` is true, print soft environment warnings (ffmpeg, keys)
+    but do not fail validation solely because of them.
+    """
     if not path.is_file():
         raise ConfigValidationError(f"config file not found: {path}")
 
@@ -254,4 +407,7 @@ def validate_config_file(path: Path, *, check_paths: bool = True) -> IdeaForgeCo
     cfg = IdeaForgeConfig()
     cfg = IdeaForgeConfig._merge(cfg, raw)
     validate_config(cfg, raw_data=raw, check_paths=check_paths)
+    if check_runtime:
+        warnings = collect_runtime_warnings(cfg)
+        print_runtime_warnings(warnings)
     return cfg

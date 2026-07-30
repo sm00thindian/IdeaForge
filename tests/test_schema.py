@@ -68,6 +68,11 @@ def test_creative_output_json_roundtrip():
         date="2026-06-27",
         creative_summary="A reflective acoustic piece.",
         themes=["nostalgia", "summer"],
+        chorus_hook="Dancing in the summer light",
+        suno_style_prompt="acoustic folk, 85 BPM, warm and intimate",
+        suno_lyrics_prompt="[Verse 1]\nFireflies glow\n[Chorus]\nSummer night",
+        udio_prompt="Porch memories, folk, mellow, warm",
+        udio_lyrics="[Verse 1]\nFireflies glow\n[Chorus]\nSummer night",
         sparks=[
             CreativeSpark(
                 title="Verse idea",
@@ -77,9 +82,11 @@ def test_creative_output_json_roundtrip():
                 suno_prompt="acoustic folk, gentle fingerpicking, warm male vocal",
             )
         ],
-        suno_style_prompt="Acoustic folk, 85 BPM, warm and intimate",
     )
     data = output.to_dict()
     assert data["title"] == "Porch Song"
     assert len(data["sparks"]) == 1
-    assert "Suno Style Prompt" in output.to_markdown()
+    md = output.to_markdown()
+    assert "Suno v5.5 Style" in md
+    assert "Udio Prompt" in md
+    assert "Dancing in the summer light" in md

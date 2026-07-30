@@ -235,3 +235,22 @@ def test_stage_constants_are_unique():
     assert len(stage_values) == len(set(stage_values))
     assert len(step_id_values) == len(set(step_id_values))
     assert len(step_label_values) == len(set(step_label_values))
+
+
+def test_reporter_relabels_summarize_step_and_sets_intent(tmp_path):
+    path = tmp_path / "status.json"
+    reporter = StatusReporter(path)
+    reporter.begin_session(
+        1,
+        label="memo",
+        recording_stem="R2026-06-27-07-43-11",
+        step_plan=[(StepId.SUMMARIZE, StepLabel.SUMMARIZE)],
+    )
+    reporter.relabel_step(StepId.SUMMARIZE, StepLabel.SONG_IDEA)
+    reporter.set_output_intent("song_idea")
+    reporter.set_step_active(StepId.SUMMARIZE, detail="R2026-06-27-07-43-11")
+
+    saved = load_status(path)
+    assert saved.output_intent == "song_idea"
+    assert saved.stage == StepLabel.SONG_IDEA
+    assert saved.steps[0].label == StepLabel.SONG_IDEA

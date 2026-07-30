@@ -5,7 +5,10 @@ from pathlib import Path
 import numpy as np
 import wave
 
-from ideaforge.session_worker import _purge_chunk_sources_after_merge
+from ideaforge.session_worker import (
+    _purge_chunk_sources_after_merge,
+    _purge_empty_merged_audio,
+)
 
 
 def _write_wav(path: Path, *, duration_seconds: float = 1.0) -> None:
@@ -54,3 +57,68 @@ def test_purge_skips_when_merge_missing(tmp_path: Path):
 
     assert removed == 0
     assert chunk.is_file()
+
+
+def test_purge_empty_merged_audio_deletes_silent_recording(tmp_path: Path):
+    folder = tmp_path / "session"
+    folder.mkdir()
+    merged = folder / "R2026-06-30-09-00-00_merged.wav"
+    transcript = folder / "R2026-06-30-09-00-00.txt"
+    _write_wav(merged, duration_seconds=4.0)
+    transcript.write_text("", encoding="utf-8")
+
+    assert _purge_empty_merged_audio(
+        process_path=merged,
+        transcript_path=transcript,
+    )
+
+    assert not merged.exists()
+
+
+def test_purge_empty_merged_audio_keeps_when_transcript_has_words(tmp_path: Path):
+    folder = tmp_path / "session"
+    folder.mkdir()
+    merged = folder / "R2026-06-30-09-00-00_merged.wav"
+    transcript = folder / "R2026-06-30-09-00-00.txt"
+    _write_wav(merged, duration_seconds=4.0)
+    transcript.write_text("hello world", encoding="utf-8")
+
+    assert not _purge_empty_merged_audio(
+        process_path=merged,
+        transcript_path=transcript,
+    )
+
+    assert merged.is_file()
+
+
+def test_purge_empty_merged_audio_skips_single_chunk_wav(tmp_path: Path):
+    folder = tmp_path / "session"
+    folder.mkdir()
+    single = folder / "R2026-06-30-09-00-00.WAV"
+    transcript = folder / "R2026-06-30-09-00-00.txt"
+    _write_wav(single, duration_seconds=2.0)
+    transcript.write_text("", encoding="utf-8")
+
+    assert not _purge_empty_merged_audio(
+        process_path=single,
+        transcript_path=transcript,
+    )
+
+    assert single.is_file()
+
+
+def test_purge_empty_merged_audio_respects_disabled_flag(tmp_path: Path):
+    folder = tmp_path / "session"
+    folder.mkdir()
+    merged = folder / "R2026-06-30-09-00-00_merged.wav"
+    transcript = folder / "R2026-06-30-09-00-00.txt"
+    _write_wav(merged, duration_seconds=4.0)
+    transcript.write_text("", encoding="utf-8")
+
+    assert not _purge_empty_merged_audio(
+        process_path=merged,
+        transcript_path=transcript,
+        enabled=False,
+    )
+
+    assert merged.is_file()

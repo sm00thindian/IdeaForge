@@ -39,6 +39,7 @@ def test_process_source_merges_chunks_before_transcribe(tmp_path: Path):
         merge_chunks=True,
         chunk_gap_seconds=30,
         merge_min_chunk_seconds=600,
+        merge_to_mp3=False,  # keep merged WAV for assertion
     )
     stages = PipelineStages(copy=True, transcribe=True, diarize=False, llm=False)
 
@@ -59,5 +60,7 @@ def test_process_source_merges_chunks_before_transcribe(tmp_path: Path):
     assert audio_arg.name == "R2025-07-07-17-00-00_merged.wav"
     assert transcribe.call_args.kwargs["output_stem"] == "R2025-07-07-17-00-00"
     archive_day = archive / "2025-07-07"
-    assert (archive_day / "R2025-07-07-17-00-00_merged.wav").is_file()
+    session_dir = archive_day / "R2025-07-07-17-00-00"
+    assert (session_dir / "R2025-07-07-17-00-00_merged.wav").is_file()
+    assert list(session_dir.glob("R2025-07-07-17-*.WAV")) == []
     assert list(archive_day.glob("R2025-07-07-17-*.WAV")) == []

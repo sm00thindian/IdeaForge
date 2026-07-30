@@ -9,6 +9,9 @@ source "$SCRIPT_DIR/common.sh"
 ROOT="$(ideaforge_project_root)"
 cd "$ROOT"
 
+# launchd uses a minimal PATH — ensure Homebrew so ffmpeg/rsync resolve.
+ensure_launchd_tool_path
+
 for env_file in "$ROOT/.env" "$HOME/.config/ideaforge/.env"; do
   load_env_file_preserve_existing "$env_file"
 done

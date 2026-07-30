@@ -13,6 +13,7 @@ from ideaforge.device_registry import list_device_archive_roots
 from ideaforge.ingest import get_audio_files, is_derived_audio
 from ideaforge.pipeline import PipelineStages, resolve_stages
 from ideaforge.runner import process_source
+from ideaforge.session_layout import iter_transcript_files, resolve_date_folder
 from ideaforge.session_time import RECORDING_STEM_PATTERN
 
 DATE_FOLDER_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -48,6 +49,10 @@ def resolve_reprocess_folders(
         folders = _date_folders_under(archive)
     elif DATE_FOLDER_RE.match(source.name):
         folders = [source]
+    elif resolve_date_folder(source) is not None:
+        # Session package or file under a date folder → that date folder.
+        date_folder = resolve_date_folder(source)
+        folders = [date_folder] if date_folder is not None else [source]
     elif archive in source.parents or source.parent == archive:
         folders = [source]
     else:
@@ -126,9 +131,11 @@ def collect_reprocess_transcript_scope(
     for folder in folders:
         if not folder.is_dir():
             continue
-        for path in sorted(folder.glob("R*.txt")):
+        for path in iter_transcript_files(folder):
             if not RECORDING_STEM_PATTERN.match(path.stem):
-                continue
+                # Still allow non-R* transcripts that are real session stems.
+                if path.suffix.lower() != ".txt":
+                    continue
             key = str(path.resolve())
             if key in seen:
                 continue

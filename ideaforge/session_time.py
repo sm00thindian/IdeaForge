@@ -8,11 +8,33 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal, Optional
 
+# Z28/Z29 continuous mode uses R…; voice-activated (VOR) mode uses V….
 RECORDING_STEM_PATTERN = re.compile(
-    r"^R(?P<year>\d{4})-(?P<month>\d{2})-(?P<day>\d{2})-"
+    r"^[RV](?P<year>\d{4})-(?P<month>\d{2})-(?P<day>\d{2})-"
     r"(?P<hour>\d{2})-(?P<minute>\d{2})-(?P<second>\d{2})$",
     re.IGNORECASE,
 )
+RECORDING_FILENAME_PATTERN = re.compile(
+    r"^[RV]\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.WAV$",
+    re.IGNORECASE,
+)
+# Source clips only (not *_merged.wav / mp3 artifacts).
+SOURCE_RECORDING_GLOBS = ("R*.WAV", "R*.wav", "V*.WAV", "V*.wav")
+SOURCE_TRANSCRIPT_GLOBS = ("R*.txt", "V*.txt")
+
+
+def iter_source_recordings(folder: Path):
+    """Yield R*/V* source WAV paths under folder (non-recursive)."""
+    if not folder.is_dir():
+        return
+    seen = set()
+    for pattern in SOURCE_RECORDING_GLOBS:
+        for path in folder.glob(pattern):
+            key = path.name.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            yield path
 
 
 def parse_recording_timestamp(path: Path) -> Optional[datetime]:
@@ -58,7 +80,7 @@ def resolve_recording_datetime(
     Pick recording datetime using configured priority:
 
     1. Device ``recset.txt`` clock (when provided at ingest)
-    2. Recorder filename timestamp (``RYYYY-MM-DD-HH-MM-SS``)
+    2. Recorder filename timestamp (``R|VYYYY-MM-DD-HH-MM-SS``)
     3. File modification time
     """
     if device_clock is not None:

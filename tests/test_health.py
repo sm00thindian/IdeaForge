@@ -11,8 +11,12 @@ from ideaforge.health import (
     check_daemon_health,
     check_menubar_health,
     collect_status_snapshot,
+    daemon_plist_path,
     format_status_report,
     open_daemon_log_tail,
+    restart_daemon_service,
+    start_daemon_service,
+    stop_daemon_service,
     watch_status_report,
 )
 from ideaforge.ingest import load_processed_log, record_session_failure, save_processed_log
@@ -199,3 +203,112 @@ def test_check_daemon_health_uses_pgrep_on_darwin():
         health = check_daemon_health()
     assert health.running is True
     assert health.pid == 1234
+
+
+def test_stop_daemon_service_requires_plist(tmp_path: Path):
+    plist = tmp_path / "com.ideaforge.daemon.plist"
+    with (
+        patch("ideaforge.health._is_darwin", return_value=True),
+        patch("ideaforge.health.daemon_plist_path", return_value=plist),
+    ):
+        ok, message = stop_daemon_service()
+    assert ok is False
+    assert "not installed" in message
+
+
+def test_stop_daemon_service_unloads_launch_agent(tmp_path: Path):
+    plist = tmp_path / "com.ideaforge.daemon.plist"
+    plist.write_text("plist", encoding="utf-8")
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0)
+
+    with (
+        patch("ideaforge.health._is_darwin", return_value=True),
+        patch("ideaforge.health.daemon_plist_path", return_value=plist),
+        patch("ideaforge.health._run_launchctl", side_effect=fake_run),
+    ):
+        ok, message = stop_daemon_service()
+
+    assert ok is True
+    assert message == "Daemon stopped"
+    assert any("bootout" in cmd for cmd in calls)
+    assert any("disable" in cmd for cmd in calls)
+
+
+def test_start_daemon_service_bootstraps_and_kickstarts(tmp_path: Path):
+    plist = tmp_path / "com.ideaforge.daemon.plist"
+    plist.write_text("plist", encoding="utf-8")
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0)
+
+    with (
+        patch("ideaforge.health._is_darwin", return_value=True),
+        patch("ideaforge.health.daemon_plist_path", return_value=plist),
+        patch("ideaforge.health._run_launchctl", side_effect=fake_run),
+        patch("ideaforge.health.time.sleep"),
+    ):
+        ok, message = start_daemon_service()
+
+    assert ok is True
+    assert message == "Daemon started"
+    assert any(cmd[0] == "bootstrap" and str(plist) in cmd for cmd in calls)
+    assert any(cmd[:2] == ["kickstart", "-k"] for cmd in calls)
+
+
+def test_restart_menubar_service_kickstarts(tmp_path: Path):
+    from ideaforge.health import restart_menubar_service
+
+    plist = tmp_path / "com.ideaforge.menubar.plist"
+    plist.write_text("{}", encoding="utf-8")
+    calls = []
+
+    def fake_run(cmd, **_kwargs):
+        calls.append(cmd)
+        return type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+    with (
+        patch("ideaforge.health._is_darwin", return_value=True),
+        patch("ideaforge.health.menubar_plist_path", return_value=plist),
+        patch("ideaforge.health._run_launchctl", side_effect=fake_run),
+    ):
+        ok, message = restart_menubar_service()
+    assert ok
+    assert "restarted" in message.lower()
+    assert any(cmd[:2] == ["kickstart", "-k"] for cmd in calls)
+
+
+def test_restart_daemon_service_falls_back_to_load(tmp_path: Path):
+    plist = tmp_path / "com.ideaforge.daemon.plist"
+    plist.write_text("plist", encoding="utf-8")
+    kickstarts = 0
+
+    def fake_run(cmd, **kwargs):
+        nonlocal kickstarts
+        if cmd[:2] == ["kickstart", "-k"]:
+            kickstarts += 1
+            if kickstarts == 1:
+                return subprocess.CompletedProcess(cmd, 1, stderr="not loaded")
+        return subprocess.CompletedProcess(cmd, 0)
+
+    with (
+        patch("ideaforge.health._is_darwin", return_value=True),
+        patch("ideaforge.health.daemon_plist_path", return_value=plist),
+        patch("ideaforge.health._run_launchctl", side_effect=fake_run),
+        patch("ideaforge.health.time.sleep"),
+    ):
+        ok, message = restart_daemon_service()
+
+    assert ok is True
+    assert message == "Daemon started"
+
+
+def test_daemon_plist_path_uses_launch_agents():
+    path = daemon_plist_path()
+    assert path.name == "com.ideaforge.daemon.plist"
+    assert path.parent.name == "LaunchAgents"

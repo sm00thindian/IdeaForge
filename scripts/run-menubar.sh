@@ -9,6 +9,9 @@ source "$SCRIPT_DIR/common.sh"
 ROOT="$(ideaforge_project_root)"
 cd "$ROOT"
 
+# Match daemon PATH so menubar-spawned tools (retry, open helpers) find brew bins.
+ensure_launchd_tool_path
+
 VENV_PYTHON="$ROOT/venv/bin/python"
 if [[ ! -x "$VENV_PYTHON" ]]; then
   echo "IdeaForge venv not found. Run ./scripts/install-menubar.sh first." >&2

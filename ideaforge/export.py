@@ -282,9 +282,11 @@ def export_summaries_in_folder(
     archive: Path,
     settings: ExportSettings,
 ) -> int:
-    """Export action items from all *_summary.json files in folder."""
+    """Export action items from all *_summary.json files in folder (nested or flat)."""
+    from ideaforge.session_layout import iter_summary_json_files
+
     total = 0
-    for summary_path in sorted(folder.glob("*_summary.json")):
+    for summary_path in iter_summary_json_files(folder):
         notes = meeting_notes_from_json(summary_path)
         if not notes.action_items:
             continue

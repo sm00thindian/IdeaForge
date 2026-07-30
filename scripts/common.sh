@@ -7,6 +7,25 @@ ideaforge_project_root() {
   (cd "$script_dir/.." && pwd)
 }
 
+# Minimal launchd PATH + Homebrew (Apple Silicon + Intel) so ffmpeg/rsync work.
+ideaforge_launchd_path() {
+  printf '%s' "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+}
+
+ensure_launchd_tool_path() {
+  # Prepend Homebrew if not already present (idempotent for interactive shells).
+  local tools
+  tools="$(ideaforge_launchd_path)"
+  case ":${PATH:-}:" in
+    *":/opt/homebrew/bin:"*|*":/usr/local/bin:"*) ;;
+    *) export PATH="${tools}${PATH:+:$PATH}" ;;
+  esac
+  # Always ensure core system dirs exist when PATH is empty/minimal.
+  if [[ -z "${PATH:-}" ]]; then
+    export PATH="$tools"
+  fi
+}
+
 resolve_ideaforge_bin() {
   local root="$1"
   local candidate=""

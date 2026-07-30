@@ -311,6 +311,8 @@ def _audio_candidates(folder: Path, session_stem: str) -> List[Path]:
     names = [
         f"{session_stem}_merged.wav",
         f"{session_stem}_merged.WAV",
+        f"{session_stem}_merged.mp3",
+        f"{session_stem}_merged.MP3",
         f"{session_stem}.wav",
         f"{session_stem}.WAV",
     ]
@@ -338,6 +340,14 @@ def find_session_folder(cfg: IdeaForgeConfig, session_stem: str) -> Optional[Pat
         for child in sorted(root.iterdir()):
             if not child.is_dir() or not _DATE_FOLDER.match(child.name):
                 continue
+            # Nested session package (preferred layout).
+            nested = child / session_stem
+            if nested.is_dir():
+                if (nested / f"{session_stem}_turns.json").is_file():
+                    return nested
+                if _audio_candidates(nested, session_stem):
+                    return nested
+            # Legacy flat date folder.
             if (child / f"{session_stem}_turns.json").is_file():
                 return child
             if _audio_candidates(child, session_stem):

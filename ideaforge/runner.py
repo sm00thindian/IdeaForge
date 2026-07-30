@@ -23,7 +23,11 @@ from ideaforge.pipeline import PipelineStages
 from ideaforge.session_pool import run_session_groups, session_log_lock
 from ideaforge.session_worker import process_group
 from ideaforge.state_db import ProcessedLog
-from ideaforge.status import STATE_PROCESSING, StatusReporter
+from ideaforge.status import (
+    STATE_PROCESSING,
+    StatusReporter,
+    record_last_notes_from_recordings,
+)
 
 
 def print_run_header(
@@ -54,7 +58,13 @@ def print_run_header(
         print(
             f"   Found {audio_count} audio file(s) in {session_count} session(s) "
             f"(merging auto-split chunks ≤ {cfg.chunk_gap_seconds:.0f}s apart, "
-            f"≥ {cfg.merge_min_chunk_seconds:.0f}s long)"
+            f"≥ {cfg.merge_min_chunk_seconds:.0f}s long"
+            + (
+                f", max {cfg.max_session_seconds / 3600:.0f}h/session"
+                if cfg.max_session_seconds > 0
+                else ""
+            )
+            + ")"
         )
     else:
         print(f"   Found {audio_count} audio file(s)")
@@ -154,6 +164,7 @@ def process_source(
             merge_min_chunk_seconds=cfg.merge_min_chunk_seconds,
             split_silence_seconds=cfg.split_silence_seconds,
             split_window_seconds=cfg.split_window_seconds,
+            max_session_seconds=cfg.max_session_seconds,
         )
 
     if show_header:
@@ -229,6 +240,8 @@ def process_source(
             processed=result.files_processed,
             skipped=result.files_skipped,
         )
+        # Replace menubar "last notes" links whenever this run created markdown.
+        record_last_notes_from_recordings(result.recordings)
 
     print(f"\n✅ IdeaForge complete — {result.files_processed} session(s) processed")
     return result

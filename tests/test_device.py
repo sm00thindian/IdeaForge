@@ -8,13 +8,24 @@ from ideaforge.device import RECORDING_PATTERN, is_recorder_volume
 def test_recording_filename_pattern():
     assert RECORDING_PATTERN.match("R2026-06-27-07-43-11.WAV")
     assert RECORDING_PATTERN.match("r2026-01-01-00-00-00.wav")
+    # Voice-activated (VOR) mode on Z28 uses V… prefix
+    assert RECORDING_PATTERN.match("V2118-10-05-12-48-15.WAV")
+    assert RECORDING_PATTERN.match("v2118-10-09-10-46-57.wav")
     assert not RECORDING_PATTERN.match("meeting_notes.wav")
+    assert not RECORDING_PATTERN.match("R2118-10-07-14-30-08_merged.wav")
 
 
 def test_is_recorder_volume_with_record_folder(tmp_path: Path):
     record = tmp_path / "RECORD"
     record.mkdir()
     (record / "R2026-06-27-07-43-11.WAV").write_bytes(b"\x00" * 1000)
+    assert is_recorder_volume(tmp_path)
+
+
+def test_is_recorder_volume_with_vor_files_only(tmp_path: Path):
+    record = tmp_path / "RECORD"
+    record.mkdir()
+    (record / "V2118-10-05-12-48-15.WAV").write_bytes(b"\x00" * 1000)
     assert is_recorder_volume(tmp_path)
 
 

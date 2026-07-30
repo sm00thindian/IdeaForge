@@ -93,6 +93,25 @@ def has_anthropic_api_key() -> bool:
 
 
 @dataclass
+class CreativePlatformStyle:
+    style_default: str = ""
+    style_variations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class CreativeSettings:
+    enabled: bool = True
+    trigger_phrases: List[str] = field(
+        default_factory=lambda: ["song idea", "lyric idea"]
+    )
+    scan_chars: int = 500
+    temperature: float = 0.6
+    style_merge: str = "merge"  # merge | memo_wins | pick_first | pick_random
+    target_duration_minutes: float = 4.5
+    rhyme_scheme: str = "mixed"  # abab | aabb | mixed
+
+
+@dataclass
 class DeviceBinding:
     """Maps a volume label glob to a device profile (``[[devices]]`` in config)."""
 
@@ -151,10 +170,18 @@ class IdeaForgeConfig:
     export_obsidian_vault: Optional[Path] = None
     export_obsidian_note: str = "IdeaForge/Action Items.md"
     min_file_size_bytes: int = 50_000
+    delete_empty_merged_audio: bool = True
     merge_chunks: bool = True
+    # After a successful multi-chunk session, encode *_merged.wav → *_merged.mp3
+    # and drop the large WAV (sources stay WAV until purged separately).
+    merge_to_mp3: bool = True
+    merge_mp3_bitrate: str = "64k"
     chunk_mode: str = "gap"  # gap | silence | fixed_window | none
     chunk_gap_seconds: float = 30.0
     merge_min_chunk_seconds: float = 600.0
+    # Cap multi-chunk merges so ML stays under Apple Metal's ~4 GiB buffer.
+    # Overnight leave-on recorders otherwise become one multi-hour session.
+    max_session_seconds: float = 4 * 3600.0  # 4 hours; 0 disables
     split_silence_seconds: float = 3.0
     split_window_seconds: float = 900.0
     normalize_audio: bool = True
@@ -163,6 +190,19 @@ class IdeaForgeConfig:
     audio_extensions: List[str] = field(
         default_factory=lambda: [".wav", ".mp3", ".m4a", ".aac", ".ogg", ".flac", ".wma", ".opus"]
     )
+    creative_enabled: bool = True
+    creative_trigger_phrases: List[str] = field(
+        default_factory=lambda: ["song idea", "lyric idea"]
+    )
+    creative_scan_chars: int = 500
+    creative_temperature: float = 0.6
+    creative_style_merge: str = "merge"
+    creative_target_duration_minutes: float = 4.5
+    creative_rhyme_scheme: str = "mixed"
+    creative_suno_style_default: str = ""
+    creative_suno_style_variations: List[str] = field(default_factory=list)
+    creative_udio_style_default: str = ""
+    creative_udio_style_variations: List[str] = field(default_factory=list)
 
     @classmethod
     def from_toml(cls, path: Path) -> "IdeaForgeConfig":
@@ -209,12 +249,20 @@ class IdeaForgeConfig:
             cfg.output_format = p.get("output_format", cfg.output_format)
             cfg.diarize = p.get("diarize", cfg.diarize)
             cfg.min_file_size_bytes = p.get("min_file_size_bytes", cfg.min_file_size_bytes)
+            if "delete_empty_merged_audio" in p:
+                cfg.delete_empty_merged_audio = bool(p["delete_empty_merged_audio"])
             if "merge_chunks" in p:
                 cfg.merge_chunks = bool(p["merge_chunks"])
+            if "merge_to_mp3" in p:
+                cfg.merge_to_mp3 = bool(p["merge_to_mp3"])
+            if "merge_mp3_bitrate" in p:
+                cfg.merge_mp3_bitrate = str(p["merge_mp3_bitrate"])
             if "chunk_gap_seconds" in p:
                 cfg.chunk_gap_seconds = float(p["chunk_gap_seconds"])
             if "merge_min_chunk_seconds" in p:
                 cfg.merge_min_chunk_seconds = float(p["merge_min_chunk_seconds"])
+            if "max_session_seconds" in p:
+                cfg.max_session_seconds = float(p["max_session_seconds"])
             if "chunk_mode" in p:
                 cfg.chunk_mode = str(p["chunk_mode"])
             if "split_silence_seconds" in p:
@@ -296,7 +344,66 @@ class IdeaForgeConfig:
             if "obsidian_vault" in export:
                 cfg.export_obsidian_vault = Path(export["obsidian_vault"]).expanduser()
             cfg.export_obsidian_note = export.get("obsidian_note", cfg.export_obsidian_note)
+        if "creative" in data:
+            creative = data["creative"]
+            if "enabled" in creative:
+                cfg.creative_enabled = bool(creative["enabled"])
+            if "trigger_phrases" in creative:
+                cfg.creative_trigger_phrases = [
+                    str(p) for p in creative["trigger_phrases"]
+                ]
+            if "scan_chars" in creative:
+                cfg.creative_scan_chars = int(creative["scan_chars"])
+            if "temperature" in creative:
+                cfg.creative_temperature = float(creative["temperature"])
+            if "style_merge" in creative:
+                cfg.creative_style_merge = str(creative["style_merge"])
+            if "target_duration_minutes" in creative:
+                cfg.creative_target_duration_minutes = float(
+                    creative["target_duration_minutes"]
+                )
+            if "rhyme_scheme" in creative:
+                cfg.creative_rhyme_scheme = str(creative["rhyme_scheme"])
+            suno = creative.get("suno")
+            if isinstance(suno, dict):
+                if "style_default" in suno:
+                    cfg.creative_suno_style_default = str(suno["style_default"])
+                if "style_variations" in suno:
+                    cfg.creative_suno_style_variations = [
+                        str(v) for v in suno["style_variations"]
+                    ]
+            udio = creative.get("udio")
+            if isinstance(udio, dict):
+                if "style_default" in udio:
+                    cfg.creative_udio_style_default = str(udio["style_default"])
+                if "style_variations" in udio:
+                    cfg.creative_udio_style_variations = [
+                        str(v) for v in udio["style_variations"]
+                    ]
         return cfg
+
+    def creative_settings(self) -> CreativeSettings:
+        return CreativeSettings(
+            enabled=self.creative_enabled,
+            trigger_phrases=list(self.creative_trigger_phrases),
+            scan_chars=self.creative_scan_chars,
+            temperature=self.creative_temperature,
+            style_merge=self.creative_style_merge,
+            target_duration_minutes=self.creative_target_duration_minutes,
+            rhyme_scheme=self.creative_rhyme_scheme,
+        )
+
+    def creative_suno_style(self) -> CreativePlatformStyle:
+        return CreativePlatformStyle(
+            style_default=self.creative_suno_style_default,
+            style_variations=list(self.creative_suno_style_variations),
+        )
+
+    def creative_udio_style(self) -> CreativePlatformStyle:
+        return CreativePlatformStyle(
+            style_default=self.creative_udio_style_default,
+            style_variations=list(self.creative_udio_style_variations),
+        )
 
     def sync_settings(self) -> "SyncSettings":
         from ideaforge.remote_sync import SyncSettings

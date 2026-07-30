@@ -267,6 +267,59 @@ def prepare_transcript_groups(files: Sequence[Path]) -> List[RecordingGroup]:
     return groups
 
 
+def group_total_seconds(group: RecordingGroup) -> float:
+    return sum(chunk.duration_seconds for chunk in group.chunks)
+
+
+def cap_groups_by_max_duration(
+    groups: List[RecordingGroup],
+    *,
+    max_session_seconds: float,
+) -> List[RecordingGroup]:
+    """
+    Split multi-chunk sessions so each stays under ``max_session_seconds``.
+
+    Prevents overnight leave-on recordings from merging into a single multi-hour
+    WAV that exceeds Apple Metal's ~4 GiB buffer limit during Whisper/diarize.
+    ``max_session_seconds <= 0`` disables the cap.
+    """
+    if max_session_seconds <= 0:
+        return groups
+
+    capped: List[RecordingGroup] = []
+    for group in groups:
+        total = group_total_seconds(group)
+        if total <= max_session_seconds or len(group.chunks) <= 1:
+            capped.append(group)
+            continue
+
+        current: List[RecordingChunk] = []
+        accumulated = 0.0
+        for chunk in group.chunks:
+            next_total = accumulated + chunk.duration_seconds
+            if current and next_total > max_session_seconds:
+                capped.append(
+                    RecordingGroup(
+                        tuple(current),
+                        recording_time=_group_recording_time(current),
+                    )
+                )
+                current = [chunk]
+                accumulated = chunk.duration_seconds
+            else:
+                current.append(chunk)
+                accumulated = next_total
+        if current:
+            capped.append(
+                RecordingGroup(
+                    tuple(current),
+                    recording_time=_group_recording_time(current),
+                )
+            )
+    capped.sort(key=lambda item: item.sort_key)
+    return capped
+
+
 def prepare_session_groups(
     files: Sequence[Path],
     *,
@@ -276,6 +329,7 @@ def prepare_session_groups(
     merge_min_chunk_seconds: float = 600.0,
     split_silence_seconds: float = 3.0,
     split_window_seconds: float = 900.0,
+    max_session_seconds: float = 4 * 3600.0,
 ) -> List[RecordingGroup]:
     """Group recorder chunks and optionally split long non-segmented files."""
     groups = group_recordings(
@@ -284,10 +338,18 @@ def prepare_session_groups(
         chunk_gap_seconds=chunk_gap_seconds,
         merge_min_chunk_seconds=merge_min_chunk_seconds,
     )
+    groups = cap_groups_by_max_duration(
+        groups,
+        max_session_seconds=max_session_seconds,
+    )
     if chunk_mode == "gap":
         return groups
     if not merge_chunks and chunk_mode != "gap":
         groups = group_recordings(files, enabled=False)
+        groups = cap_groups_by_max_duration(
+            groups,
+            max_session_seconds=max_session_seconds,
+        )
     return expand_long_recordings(
         groups,
         chunk_mode=chunk_mode,

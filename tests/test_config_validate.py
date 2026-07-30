@@ -7,6 +7,7 @@ import pytest
 from ideaforge.config import IdeaForgeConfig
 from ideaforge.config_validate import (
     ConfigValidationError,
+    collect_runtime_warnings,
     find_unknown_keys,
     validate_config,
     validate_config_file,
@@ -70,3 +71,23 @@ unknown_flag = true
     with pytest.raises(ConfigValidationError) as exc:
         validate_config_file(config, check_paths=False)
     assert "unknown top-level" in str(exc.value)
+
+
+def test_collect_runtime_warnings_empty_when_tools_present(tmp_path: Path):
+    cfg = IdeaForgeConfig(
+        archive=tmp_path,
+        merge_to_mp3=True,
+        normalize_audio=True,
+        diarize=False,
+        llm_backend="ollama",
+    )
+    from unittest.mock import patch
+
+    with (
+        patch("ideaforge.config_validate._tool_on_path", return_value="/usr/bin/ffmpeg"),
+        patch("ideaforge.config.has_xai_api_key", return_value=False),
+    ):
+        warnings = collect_runtime_warnings(cfg)
+    # ollama backend should not warn about missing XAI
+    assert not any("merge_to_mp3" in w for w in warnings)
+    assert not any("XAI_API_KEY" in w for w in warnings)

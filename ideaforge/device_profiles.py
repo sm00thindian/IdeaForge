@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import fnmatch
-import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -11,10 +10,13 @@ from typing import List, Optional, Protocol, Set, runtime_checkable
 
 from ideaforge.chunks import parse_recording_timestamp
 from ideaforge.ingest import get_audio_files, is_derived_audio
+from ideaforge.session_time import (
+    RECORDING_FILENAME_PATTERN as RECORDING_PATTERN,
+    iter_source_recordings,
+)
 
 KNOWN_RECORD_FOLDERS = ("RECORD", "Record", "record")
 SETTINGS_FILES = ("recset.txt", "RECSET.TXT")
-RECORDING_PATTERN = re.compile(r"^R\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.WAV$", re.IGNORECASE)
 
 
 def _find_record_folder(volume: Path) -> Optional[Path]:
@@ -74,7 +76,7 @@ class DeviceProfile(Protocol):
 
 @dataclass(frozen=True)
 class Z28Profile:
-    """Z28/Z29 — RECORD/R*.WAV + optional recset.txt."""
+    """Z28/Z29 — RECORD/R*.WAV or V*.WAV (VOR) + optional recset.txt."""
 
     name: str = "z28"
 
@@ -83,10 +85,8 @@ class Z28Profile:
             return False
         for folder_name in KNOWN_RECORD_FOLDERS:
             record_dir = mount / folder_name
-            if record_dir.is_dir():
-                wavs = list(record_dir.glob("R*.WAV")) + list(record_dir.glob("R*.wav"))
-                if wavs:
-                    return True
+            if record_dir.is_dir() and any(iter_source_recordings(record_dir)):
+                return True
         for settings in SETTINGS_FILES:
             if (mount / settings).is_file():
                 return True
@@ -120,19 +120,18 @@ class Z28Profile:
         root = self.scan_root(mount)
         if not root.is_dir():
             return 0
-        return len(list(root.glob("R*.WAV")) + list(root.glob("R*.wav")))
+        return sum(1 for _ in iter_source_recordings(root))
 
     def newest_recording_mtime(self, mount: Path) -> float:
         newest = 0.0
         root = self.scan_root(mount)
         if not root.is_dir():
             return newest
-        for pattern in ("R*.WAV", "R*.wav"):
-            for wav in root.glob(pattern):
-                try:
-                    newest = max(newest, wav.stat().st_mtime)
-                except OSError:
-                    pass
+        for wav in iter_source_recordings(root):
+            try:
+                newest = max(newest, wav.stat().st_mtime)
+            except OSError:
+                pass
         return newest
 
     def read_device_clock(self, mount: Path) -> Optional["DeviceClockInfo"]:

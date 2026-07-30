@@ -10,6 +10,8 @@ ideaforge/chunks.py
 ideaforge/cli.py
 ideaforge/config.py
 ideaforge/config_validate.py
+ideaforge/creative_intent.py
+ideaforge/creative_platforms.py
 ideaforge/daemon.py
 ideaforge/device.py
 ideaforge/device_profiles.py
@@ -30,6 +32,7 @@ ideaforge/remote_sync.py
 ideaforge/reprocess.py
 ideaforge/runner.py
 ideaforge/schema.py
+ideaforge/session_layout.py
 ideaforge/session_pool.py
 ideaforge/session_time.py
 ideaforge/session_worker.py
@@ -37,6 +40,7 @@ ideaforge/speaker_library.py
 ideaforge/speakers.py
 ideaforge/state_db.py
 ideaforge/status.py
+ideaforge/summary_names.py
 ideaforge/sync_cli.py
 ideaforge/transcribe.py
 ideaforge/transcription_types.py
@@ -61,6 +65,10 @@ tests/test_chunks.py
 tests/test_chunks_split.py
 tests/test_config.py
 tests/test_config_validate.py
+tests/test_creative_intent.py
+tests/test_creative_llm.py
+tests/test_creative_platforms.py
+tests/test_creative_prompts.py
 tests/test_daemon.py
 tests/test_daemon_config.py
 tests/test_daemon_ingest.py
@@ -85,11 +93,15 @@ tests/test_ingest.py
 tests/test_ingest_device.py
 tests/test_ingest_device_clock.py
 tests/test_ingest_only.py
+tests/test_last_notes.py
 tests/test_llm.py
 tests/test_log_util.py
 tests/test_menubar_failures.py
 tests/test_menubar_lock.py
 tests/test_menubar_log.py
+tests/test_merge_cleanup.py
+tests/test_merge_to_mp3.py
+tests/test_merged_wav_prune.py
 tests/test_notify.py
 tests/test_parallel.py
 tests/test_pipeline.py
@@ -101,6 +113,7 @@ tests/test_runner_purge.py
 tests/test_save_grok_session.py
 tests/test_schema.py
 tests/test_session_failures.py
+tests/test_session_layout.py
 tests/test_session_pool_context.py
 tests/test_session_time.py
 tests/test_speaker_library.py
@@ -108,4 +121,5 @@ tests/test_speaker_register.py
 tests/test_speakers.py
 tests/test_state_db.py
 tests/test_status.py
+tests/test_summary_names.py
 tests/test_sync_cli.py

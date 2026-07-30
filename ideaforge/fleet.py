@@ -38,9 +38,19 @@ def _count_pending_audio(archive_root: Path, min_size_bytes: int) -> List[str]:
         for audio in get_audio_files(folder, extensions, min_size_bytes):
             if is_derived_audio(audio):
                 continue
-            transcript = folder / f"{audio.stem}.txt"
-            if not transcript.exists():
-                pending.append(audio.stem)
+            session_dir = audio.parent
+            # Nested package uses session-dir name as stem; flat uses audio stem.
+            stems = [audio.stem]
+            if session_dir != folder:
+                stems.insert(0, session_dir.name)
+            if any((session_dir / f"{stem}.txt").is_file() for stem in stems):
+                continue
+            # Multi-chunk: any transcript in the session package means done.
+            if session_dir != folder and any(
+                session_dir.glob(p) for p in ("R*.txt", "V*.txt")
+            ):
+                continue
+            pending.append(audio.stem)
     return sorted(set(pending))
 
 
