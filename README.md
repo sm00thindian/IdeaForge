@@ -77,7 +77,7 @@ USB recorder plugged in
 
 ### Song idea mode
 
-Say a trigger phrase at the **start** of your voice memo (default: **"song idea"**). IdeaForge detects it after transcription and produces copy-ready **Suno v5.5** and **Udio** blocks — style prompt, lyrics, and paste sidecars (`*_suno.txt`, `*_udio.txt`).
+Say a trigger at the **start** of your voice memo (defaults include **"song idea"**, **"lyric idea"**, **"write a song"**). Leading fillers like “yeah” / “um” and speaker labels are ignored. IdeaForge routes after transcription and produces copy-ready **Suno v5.5** and **Udio** blocks — style prompt, lyrics, and paste sidecars (`*_suno.txt`, `*_udio.txt`).
 
 Example memo opening:
 

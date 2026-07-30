@@ -4,6 +4,10 @@ All notable changes to IdeaForge are documented here. Format follows [Keep a Cha
 
 ## [Unreleased]
 
+### Fixed
+
+- **Song-idea routing** — Detect triggers after fillers (`yeah`, `um`, …) and speaker labels; also match “write a song” / similar near the start so ASR paraphrases still route to creative mode.
+
 ## [1.3.0] - 2026-07-30
 
 ### Added

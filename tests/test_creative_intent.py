@@ -20,12 +20,33 @@ def test_detects_song_idea_at_start():
     assert "fireflies" in result.content_after_trigger
 
 
+def test_detects_after_yeah_and_write_a_song():
+    """Real failure: Whisper heard 'Yeah. Write a song about…' without 'song idea'."""
+    transcript = (
+        "[SPEAKER_00]\n"
+        "Yeah. Write a song about losing your way, not having any purpose, "
+        "and focusing on yourself, traveling and discovering yourself."
+    )
+    result = detect_intent(transcript, ["song idea", "lyric idea"])
+    assert is_song_idea(result)
+    assert result.matched_phrase is not None
+    assert "losing your way" in result.content_after_trigger.lower()
+
+
+def test_detects_song_idea_after_fillers_and_speaker_label():
+    transcript = "[SPEAKER_00]\nUm, okay, song idea. Folk about the river at night."
+    result = detect_intent(transcript, ["song idea"])
+    assert is_song_idea(result)
+    assert result.matched_phrase == "song idea"
+    assert "river" in result.content_after_trigger.lower()
+
+
 def test_ignores_trigger_late_in_transcript():
     transcript = (
         "We discussed the roadmap for an hour. "
         "Someone joked about a song idea for the marketing video."
     )
-    result = detect_intent(transcript, ["song idea"], scan_chars=200)
+    result = detect_intent(transcript, ["song idea"], scan_chars=80)
     assert not is_song_idea(result)
 
 
