@@ -2,6 +2,15 @@
 
 Thanks for helping build a privacy-focused voice pipeline. IdeaForge is designed to stay local-first — please keep that principle in mind when proposing changes.
 
+## Python versions
+
+| | Versions |
+|--|----------|
+| **Supported (CI)** | 3.10, 3.11, 3.12, 3.13 |
+| **Dev (optional)** | 3.14 works on macOS today; not yet required in CI |
+
+Use the project `venv/` and `pip install -e ".[dev]"` (or `.[all,dev]`).
+
 ## Development setup
 
 ```bash

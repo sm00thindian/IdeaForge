@@ -10,6 +10,7 @@ All notable changes to IdeaForge are documented here. Format follows [Keep a Cha
 - **Stage ETA** — Rough ``~Nm left`` estimates for transcribe/diarize from audio duration × RTF baselines (`stage_eta.py`); shown in menubar detail/elapsed and `status.json` (`eta_seconds`).
 - **Status module split** — `status.py` is a facade over `status_model`, `status_reporter`, `status_cli_probe`, and `last_notes` (no public API break).
 - **Creative regenerate** — `ideaforge --regenerate-creative --source … --session STEM` re-runs song-idea LLM without re-transcribing; menubar last-notes can open Suno/Udio sidecars.
+- **Golden markdown contracts** — `tests/goldens/` freezes meeting + song markdown rendering; CI matrix includes Python 3.13.
 
 ## [1.2.0] - 2026-07-30
 
