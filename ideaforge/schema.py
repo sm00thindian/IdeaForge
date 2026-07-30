@@ -235,6 +235,8 @@ class CreativeOutput:
     applied_style: Optional[str] = None
     style_variation_index: Optional[int] = None
     chorus_hook: Optional[str] = None
+    # Alternate hook lines (in addition to chorus_hook); empty when not requested.
+    chorus_variants: List[str] = field(default_factory=list)
     lyrics_draft: Optional[str] = None
     suno_style_prompt: Optional[str] = None
     suno_lyrics_prompt: Optional[str] = None
@@ -275,6 +277,12 @@ class CreativeOutput:
 
         if self.chorus_hook:
             lines += ["## Chorus Hook", "", f"> {self.chorus_hook}", ""]
+
+        if self.chorus_variants:
+            lines += ["## Chorus Variants", ""]
+            for index, variant in enumerate(self.chorus_variants, start=1):
+                lines.append(f"{index}. {variant}")
+            lines.append("")
 
         if self.raw_lyric_fragments:
             lines += ["## Raw Fragments", ""]

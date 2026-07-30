@@ -156,8 +156,8 @@ profile = "generic_wav"
 | Song-idea LLM prompts + style config | Done in 1.2.0 | `[creative]`, `[creative.suno]`, `[creative.udio]` |
 | Suno v5.5 + Udio platform formatters | Done in 1.2.0 | 1000-char Suno style clamp, section tags, sidecar files |
 | Operator maturity (doctor, last notes, PATH, retry) | Done in 1.2.0 | Epic #1 Wave A — see GitHub issues |
-| Multi-pass lyric polish | Planned 1.3.0 | Optional two-pass pipeline (#17) |
-| Chorus variants | Planned 1.3.0 | Multiple hook alternatives in output (#17) |
+| Multi-pass lyric polish | Done in 1.3.0 | `creative.multi_pass` opt-in second LLM polish |
+| Chorus variants | Done in 1.3.0 | `creative.chorus_variant_count` (default 3) |
 | Extensible intent registry | Planned 1.4.0 | `poem_idea`, `melody_note`, per-device triggers |
 | Song project library (multi-memo) | Planned 2.0 | Link memos to `song_id` over time |
 

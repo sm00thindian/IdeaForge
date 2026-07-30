@@ -4,6 +4,13 @@ All notable changes to IdeaForge are documented here. Format follows [Keep a Cha
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-07-30
+
+### Added
+
+- **Creative multi-pass polish** — Opt-in `creative.multi_pass = true` runs a second LLM pass to strengthen lyrics and hooks without changing meeting mode.
+- **Chorus variants** — `creative.chorus_variant_count` (default 3) requests alternate hooks; rendered under **Chorus Variants** in song markdown (`CreativeOutput.chorus_variants`).
+
 ## [1.2.1] - 2026-07-30
 
 ### Added
@@ -224,6 +231,7 @@ All notable changes to IdeaForge are documented here. Format follows [Keep a Cha
 
 Prior releases were not changelogged in-repo. See git history for daemon, Grok/Claude/Ollama backends, faster-whisper + pyannote diarization, and USB ingest.
 
+[1.3.0]: https://github.com/sm00thindian/IdeaForge/releases/tag/v1.3.0
 [1.2.1]: https://github.com/sm00thindian/IdeaForge/releases/tag/v1.2.1
 [1.2.0]: https://github.com/sm00thindian/IdeaForge/releases/tag/v1.2.0
 [1.0.1]: https://github.com/sm00thindian/IdeaForge/releases/tag/v1.0.1

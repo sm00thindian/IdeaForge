@@ -32,6 +32,8 @@ CREATIVE_SECTION_KEYS: Set[str] = {
     "style_merge",
     "target_duration_minutes",
     "rhyme_scheme",
+    "multi_pass",
+    "chorus_variant_count",
     "suno",
     "udio",
 }
@@ -260,6 +262,10 @@ def validate_config_values(cfg: IdeaForgeConfig) -> List[str]:
             f"invalid creative.rhyme_scheme '{cfg.creative_rhyme_scheme}' "
             f"(expected one of {sorted(RHYME_SCHEMES)})"
         )
+    if cfg.creative_chorus_variant_count < 0:
+        issues.append("creative.chorus_variant_count must be >= 0")
+    if cfg.creative_chorus_variant_count > 8:
+        issues.append("creative.chorus_variant_count must be <= 8")
 
     device_names: Set[str] = set()
     for device in cfg.devices:

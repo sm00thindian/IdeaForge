@@ -18,7 +18,7 @@ from ideaforge.summary_names import (
     plan_summary_md_path,
     resolve_summary_md_path,
 )
-from ideaforge.prompts import Mode, build_prompt
+from ideaforge.prompts import Mode, build_lyric_polish_prompt, build_prompt
 from ideaforge.creative_intent import IntentResult, detect_intent, is_song_idea
 from ideaforge.creative_platforms import (
     PlatformStyleConfig,
@@ -218,9 +218,36 @@ def process_transcript(
         print(f"    ✓ Raw summary saved (non-JSON response): {md_path.name}")
         return md_path
 
+    multi_pass_applied = False
+    if (
+        effective_mode == "creative"
+        and creative_settings is not None
+        and creative_settings.multi_pass
+    ):
+        polished = _run_creative_polish_pass(
+            parsed,
+            backend=used_backend,
+            temperature=temperature,
+            ollama_model=ollama_model,
+            grok_model=grok_model,
+            claude_model=claude_model,
+            creative_settings=creative_settings,
+        )
+        if polished is not None:
+            parsed = polished
+            multi_pass_applied = True
+            print("    ✨ Lyric polish pass complete")
+        else:
+            print("    ⚠️  Lyric polish pass skipped (non-JSON or error) — keeping draft")
+
     resolved_mode = effective_mode
     if mode == "auto" and effective_mode == "meeting":
         resolved_mode = _resolve_mode(parsed, mode)
+
+    if multi_pass_applied:
+        meta = parsed.setdefault("metadata", {})
+        if isinstance(meta, dict):
+            meta["multi_pass"] = True
 
     primary_path = _write_structured_output(
         parsed,
@@ -240,6 +267,72 @@ def process_transcript(
         intent_result=intent_result,
     )
     return primary_path
+
+
+def _run_creative_polish_pass(
+    draft: Dict[str, Any],
+    *,
+    backend: str,
+    temperature: float,
+    ollama_model: str,
+    grok_model: str,
+    claude_model: str,
+    creative_settings: "CreativeSettings",
+) -> Optional[Dict[str, Any]]:
+    """Optional second LLM call to polish creative draft JSON."""
+    system_prompt, user_prompt = build_lyric_polish_prompt(
+        draft,
+        creative_settings=creative_settings,
+    )
+    status_touch(
+        stage=Stage.SUMMARIZING,
+        detail="lyric polish pass",
+    )
+    try:
+        raw = _call_llm(
+            backend,
+            system_prompt,
+            user_prompt,
+            temperature=min(temperature, 0.5),
+            ollama_model=ollama_model,
+            grok_model=grok_model,
+            claude_model=claude_model,
+            creative=True,
+        )
+    except Exception as exc:
+        print(f"    ⚠️  Polish pass failed: {exc}")
+        return None
+    polished = _parse_json_response(raw or "")
+    if not polished:
+        return None
+    return _merge_creative_polish(draft, polished)
+
+
+def _merge_creative_polish(
+    draft: Dict[str, Any],
+    polished: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Prefer polished lyric fields; keep draft keys if polish omitted them."""
+    merged = dict(draft)
+    for key in (
+        "title",
+        "creative_summary",
+        "themes",
+        "chorus_hook",
+        "chorus_variants",
+        "lyrics_draft",
+        "suno_style_prompt",
+        "suno_lyrics_prompt",
+        "udio_prompt",
+        "udio_lyrics",
+        "rhyme_scheme",
+        "detected_style",
+        "raw_lyric_fragments",
+        "sparks",
+    ):
+        if key in polished and polished[key] not in (None, "", []):
+            merged[key] = polished[key]
+    return merged
 
 
 def _resolve_backend(backend: str) -> str:
@@ -662,9 +755,43 @@ def _dict_to_creative(
         applied_style=formatted.get("applied_style"),
         style_variation_index=formatted.get("style_variation_index"),
         chorus_hook=data.get("chorus_hook"),
+        chorus_variants=_normalize_chorus_variants(
+            data.get("chorus_variants"),
+            primary=data.get("chorus_hook"),
+            max_count=(
+                creative_settings.chorus_variant_count if creative_settings else 3
+            ),
+        ),
         lyrics_draft=data.get("lyrics_draft"),
         suno_style_prompt=formatted.get("suno_style_prompt"),
         suno_lyrics_prompt=formatted.get("suno_lyrics_prompt"),
         udio_prompt=formatted.get("udio_prompt"),
         udio_lyrics=formatted.get("udio_lyrics"),
     )
+
+
+def _normalize_chorus_variants(
+    raw: Any,
+    *,
+    primary: Optional[str],
+    max_count: int,
+) -> List[str]:
+    if max_count <= 0 or not raw:
+        return []
+    if not isinstance(raw, list):
+        return []
+    primary_norm = (primary or "").strip().lower()
+    variants: List[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        text = str(item).strip()
+        if not text:
+            continue
+        key = text.lower()
+        if key == primary_norm or key in seen:
+            continue
+        seen.add(key)
+        variants.append(text)
+        if len(variants) >= max_count:
+            break
+    return variants

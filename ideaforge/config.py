@@ -109,6 +109,10 @@ class CreativeSettings:
     style_merge: str = "merge"  # merge | memo_wins | pick_first | pick_random
     target_duration_minutes: float = 4.5
     rhyme_scheme: str = "mixed"  # abab | aabb | mixed
+    # Second LLM pass to polish lyrics/hooks (extra cost; off by default).
+    multi_pass: bool = False
+    # Number of alternate chorus hooks (0 = only chorus_hook).
+    chorus_variant_count: int = 3
 
 
 @dataclass
@@ -205,6 +209,8 @@ class IdeaForgeConfig:
     creative_style_merge: str = "merge"
     creative_target_duration_minutes: float = 4.5
     creative_rhyme_scheme: str = "mixed"
+    creative_multi_pass: bool = False
+    creative_chorus_variant_count: int = 3
     creative_suno_style_default: str = ""
     creative_suno_style_variations: List[str] = field(default_factory=list)
     creative_udio_style_default: str = ""
@@ -380,6 +386,12 @@ class IdeaForgeConfig:
                 )
             if "rhyme_scheme" in creative:
                 cfg.creative_rhyme_scheme = str(creative["rhyme_scheme"])
+            if "multi_pass" in creative:
+                cfg.creative_multi_pass = bool(creative["multi_pass"])
+            if "chorus_variant_count" in creative:
+                cfg.creative_chorus_variant_count = max(
+                    0, int(creative["chorus_variant_count"])
+                )
             suno = creative.get("suno")
             if isinstance(suno, dict):
                 if "style_default" in suno:
@@ -418,6 +430,8 @@ class IdeaForgeConfig:
             style_merge=self.creative_style_merge,
             target_duration_minutes=self.creative_target_duration_minutes,
             rhyme_scheme=self.creative_rhyme_scheme,
+            multi_pass=self.creative_multi_pass,
+            chorus_variant_count=self.creative_chorus_variant_count,
         )
 
     def creative_suno_style(self) -> CreativePlatformStyle:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, List, Literal, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional
 
 if TYPE_CHECKING:
     from ideaforge.config import CreativePlatformStyle, CreativeSettings
@@ -191,6 +191,7 @@ Return a JSON object with exactly these keys:
   "detected_style": "genre/mood/style the musician described, or null",
   "rhyme_scheme": "e.g. 'Verse 1: ABAB, Verse 2: ABAB, Chorus: AABB, Bridge: ABAB'",
   "chorus_hook": "the main repeatable hook line, or null",
+  "chorus_variants": {chorus_variants_json_hint},
   "lyrics_draft": "human-readable polished lyrics (plain text, section labels ok)",
   "suno_style_prompt": "Suno v5.5 style field — under 1000 chars including whitespace",
   "suno_lyrics_prompt": "Suno lyrics with [Verse]/[Chorus] tags — full song length",
@@ -203,7 +204,26 @@ Rules:
 2. Expand sparse memos into a full {target_duration_minutes}-minute song in their voice.
 3. Apply the rhyme preference consistently; note the scheme per section in rhyme_scheme.
 4. suno_style_prompt: rich but not redundant — do not repeat the same adjective twice.
-5. Make the chorus_hook the most singable line; verses should carry the narrative weight."""
+5. Make the chorus_hook the most singable line; verses should carry the narrative weight.
+6. {chorus_variants_rule}"""
+
+SONG_POLISH_SYSTEM = """You are a meticulous lyric editor for AI-music platforms (Suno v5.5 / Udio). \
+You receive a draft song JSON and return a polished JSON with stronger craft: tighter \
+rhymes, concrete images, clearer narrative arc, and a more memorable chorus. \
+Preserve the musician's voice and original images. Output valid JSON only."""
+
+SONG_POLISH_USER_TEMPLATE = """Polish this song-idea draft. Keep the same JSON keys. Improve \
+lyrics_draft, suno_lyrics_prompt, udio_lyrics, chorus_hook, and chorus_variants without \
+changing the core concept or title unless the title is generic.
+
+Draft JSON:
+{draft_json}
+
+Rules:
+1. Strengthen end-rhymes and section structure; keep ~{target_duration_minutes} minutes of material.
+2. chorus_hook must be the strongest single line; chorus_variants are distinct alternatives.
+3. Do not invent a totally different song — polish and elevate.
+4. Return the full JSON object (all original keys)."""
 
 CREATIVE_SYSTEM = SONG_IDEA_SYSTEM
 
@@ -252,6 +272,18 @@ def build_song_idea_prompt(
         "aabb": "AABB couplet rhymes in verses and chorus where possible",
         "mixed": "mix ABAB and AABB by section — document each in rhyme_scheme",
     }.get(settings.rhyme_scheme, settings.rhyme_scheme)
+    n_variants = max(0, int(settings.chorus_variant_count))
+    if n_variants > 0:
+        chorus_variants_json_hint = (
+            f'["up to {n_variants} alternate hook lines, distinct from chorus_hook"]'
+        )
+        chorus_variants_rule = (
+            f"Provide up to {n_variants} chorus_variants (alternate hooks); "
+            "do not duplicate chorus_hook."
+        )
+    else:
+        chorus_variants_json_hint = "[]"
+        chorus_variants_rule = "Leave chorus_variants as an empty array."
     return SONG_IDEA_SYSTEM.format(
         target_duration_minutes=settings.target_duration_minutes,
         rhyme_scheme=rhyme_hint,
@@ -263,6 +295,29 @@ def build_song_idea_prompt(
         suno_style_variations=_format_style_variations(suno_style.style_variations),
         udio_style_default=udio_style.style_default or "(none configured)",
         udio_style_variations=_format_style_variations(udio_style.style_variations),
+        chorus_variants_json_hint=chorus_variants_json_hint,
+        chorus_variants_rule=chorus_variants_rule,
+    )
+
+
+def build_lyric_polish_prompt(
+    draft: Dict[str, Any],
+    *,
+    creative_settings: Optional["CreativeSettings"] = None,
+) -> tuple[str, str]:
+    """Second-pass polish prompts for multi-pass creative mode."""
+    import json
+
+    from ideaforge.config import CreativeSettings
+
+    settings = creative_settings or CreativeSettings()
+    draft_json = json.dumps(draft, indent=2, ensure_ascii=False)
+    # Keep prompt bounded
+    if len(draft_json) > 20_000:
+        draft_json = draft_json[:20_000] + "\n…"
+    return SONG_POLISH_SYSTEM, SONG_POLISH_USER_TEMPLATE.format(
+        draft_json=draft_json,
+        target_duration_minutes=settings.target_duration_minutes,
     )
 
 

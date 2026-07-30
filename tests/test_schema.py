@@ -69,6 +69,7 @@ def test_creative_output_json_roundtrip():
         creative_summary="A reflective acoustic piece.",
         themes=["nostalgia", "summer"],
         chorus_hook="Dancing in the summer light",
+        chorus_variants=["Fireflies on the porch tonight", "Summer light, hold me tight"],
         suno_style_prompt="acoustic folk, 85 BPM, warm and intimate",
         suno_lyrics_prompt="[Verse 1]\nFireflies glow\n[Chorus]\nSummer night",
         udio_prompt="Porch memories, folk, mellow, warm",
@@ -90,3 +91,5 @@ def test_creative_output_json_roundtrip():
     assert "Suno v5.5 Style" in md
     assert "Udio Prompt" in md
     assert "Dancing in the summer light" in md
+    assert "## Chorus Variants" in md
+    assert "Fireflies on the porch tonight" in md
