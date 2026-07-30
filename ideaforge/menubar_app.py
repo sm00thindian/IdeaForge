@@ -291,6 +291,24 @@ class IdeaForgeMenuBarApp:
             self.last_notes_item.set_callback(None)
             return
 
+        def _add_sidecar_items(parent, note: LastNote) -> None:
+            if note.suno_path and Path(note.suno_path).is_file():
+                suno = note.suno_path
+                parent.add(
+                    rumps.MenuItem(
+                        "Open Suno sidecar",
+                        callback=lambda _s=None, p=suno: _open_path(Path(p)),
+                    )
+                )
+            if note.udio_path and Path(note.udio_path).is_file():
+                udio = note.udio_path
+                parent.add(
+                    rumps.MenuItem(
+                        "Open Udio sidecar",
+                        callback=lambda _s=None, p=udio: _open_path(Path(p)),
+                    )
+                )
+
         if len(notes) == 1:
             note = notes[0]
             self.last_notes_item.title = f"Open Notes: {note.menu_label}"
@@ -298,6 +316,11 @@ class IdeaForgeMenuBarApp:
             self.last_notes_item.set_callback(
                 lambda _sender=None, note_path=path: _open_path(Path(note_path))
             )
+            _add_sidecar_items(self.last_notes_item, note)
+            try:
+                self.last_notes_item._menuitem.setEnabled_(True)
+            except Exception:
+                pass
             return
 
         # Multiple notes: keep parent ENABLED (rumps greys out callback=None).
@@ -309,14 +332,29 @@ class IdeaForgeMenuBarApp:
         )
         for index, note in enumerate(notes, start=1):
             path = note.path
-            # Unique titles so rumps dict keys do not collide / drop entries.
             label = f"{index}. {note.menu_label}"
-            item = rumps.MenuItem(
-                label,
-                callback=lambda _sender=None, note_path=path: _open_path(Path(note_path)),
+            has_sidecars = (
+                (note.suno_path and Path(note.suno_path).is_file())
+                or (note.udio_path and Path(note.udio_path).is_file())
             )
-            self.last_notes_item.add(item)
-        # Ensure parent stays enabled after nested menu attachment.
+            if has_sidecars:
+                group = rumps.MenuItem(label)
+                group.add(
+                    rumps.MenuItem(
+                        "Open notes",
+                        callback=lambda _s=None, p=path: _open_path(Path(p)),
+                    )
+                )
+                _add_sidecar_items(group, note)
+                self.last_notes_item.add(group)
+            else:
+                item = rumps.MenuItem(
+                    label,
+                    callback=lambda _sender=None, note_path=path: _open_path(
+                        Path(note_path)
+                    ),
+                )
+                self.last_notes_item.add(item)
         try:
             self.last_notes_item._menuitem.setEnabled_(True)
         except Exception:

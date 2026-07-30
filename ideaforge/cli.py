@@ -237,7 +237,15 @@ def build_parser() -> argparse.ArgumentParser:
         dest="reprocess_sessions",
         action="append",
         metavar="STEM",
-        help="With --reprocess: limit to session stem (repeatable)",
+        help="With --reprocess / --regenerate-creative: session stem (repeatable)",
+    )
+    parser.add_argument(
+        "--regenerate-creative",
+        action="store_true",
+        help=(
+            "Re-run song-idea LLM only for --session stem(s) under --source "
+            "(no re-transcribe; uses prior creative JSON as seed metadata)"
+        ),
     )
     parser.add_argument("--no-transcribe", action="store_true", help="Skip transcription")
     parser.add_argument("--no-llm", action="store_true", help="Skip LLM summarization")
@@ -654,6 +662,28 @@ def main(argv: Optional[list] = None) -> int:
         if dry_run:
             print("\nRe-run without --dry-run to apply.")
         return 0
+
+    if args.regenerate_creative:
+        if not args.source:
+            parser.error("--regenerate-creative requires --source (archive or date folder)")
+        stems = list(args.reprocess_sessions or [])
+        if not stems:
+            parser.error("--regenerate-creative requires at least one --session STEM")
+        from ideaforge.creative_regen import regenerate_creative
+
+        cfg.resolve_secrets()
+        source = args.source.expanduser().resolve()
+        exit_code = 0
+        for stem in stems:
+            code, md_path, message = regenerate_creative(source, stem, cfg)
+            if code == 0:
+                print(f"✓ {message}")
+                if md_path:
+                    print(f"   {md_path}")
+            else:
+                print(f"❌ {message}")
+                exit_code = 1
+        return exit_code
 
     if args.reprocess:
         from ideaforge.reprocess import run_reprocess

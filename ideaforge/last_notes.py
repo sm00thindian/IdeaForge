@@ -33,6 +33,8 @@ class LastNote:
     title: str
     output_intent: Optional[str] = None
     stem: Optional[str] = None
+    suno_path: Optional[str] = None
+    udio_path: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -40,17 +42,49 @@ class LastNote:
             "title": self.title,
             "output_intent": self.output_intent,
             "stem": self.stem,
+            "suno_path": self.suno_path,
+            "udio_path": self.udio_path,
         }
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "LastNote":
         path = str(data.get("path") or "").strip()
         title = str(data.get("title") or "").strip() or Path(path).stem
-        return cls(
+        note = cls(
             path=path,
             title=title,
             output_intent=data.get("output_intent"),
             stem=data.get("stem"),
+            suno_path=data.get("suno_path"),
+            udio_path=data.get("udio_path"),
+        )
+        return note.with_resolved_sidecars()
+
+    def with_resolved_sidecars(self) -> "LastNote":
+        """Fill suno/udio paths when files exist near the note or session package."""
+        if self.suno_path and self.udio_path:
+            return self
+        try:
+            from ideaforge.creative_regen import list_sidecars_for_note_path
+        except ImportError:
+            return self
+        found = {
+            label: path
+            for label, path in list_sidecars_for_note_path(self.path, stem=self.stem)
+        }
+        suno = self.suno_path
+        udio = self.udio_path
+        if "Suno" in found and (not suno or not Path(suno).is_file()):
+            suno = str(found["Suno"].resolve())
+        if "Udio" in found and (not udio or not Path(udio).is_file()):
+            udio = str(found["Udio"].resolve())
+        return LastNote(
+            path=self.path,
+            title=self.title,
+            output_intent=self.output_intent,
+            stem=self.stem,
+            suno_path=suno,
+            udio_path=udio,
         )
 
     @property
@@ -81,7 +115,7 @@ def load_last_notes(path: Optional[Path] = None) -> List[LastNote]:
         if not note.path:
             continue
         if Path(note.path).is_file():
-            notes.append(note)
+            notes.append(note.with_resolved_sidecars())
     return notes
 
 
@@ -130,14 +164,13 @@ def last_notes_from_recordings(recordings: List[Any]) -> List[LastNote]:
         stem = getattr(rec, "stem", None)
         if not title:
             title = stem or md_path.stem
-        notes.append(
-            LastNote(
-                path=str(md_path.resolve()),
-                title=str(title),
-                output_intent=getattr(rec, "output_intent", None),
-                stem=stem,
-            )
+        note = LastNote(
+            path=str(md_path.resolve()),
+            title=str(title),
+            output_intent=getattr(rec, "output_intent", None),
+            stem=stem,
         )
+        notes.append(note.with_resolved_sidecars())
     return notes
 
 
