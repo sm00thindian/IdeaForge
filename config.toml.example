@@ -78,6 +78,12 @@ output_format = "both"   # md | json | both
 diarize = false
 min_file_size_bytes = 50000
 delete_empty_merged_audio = true  # remove *_merged.wav when Whisper finds no speech
+# Skip LLM for empty/junk transcripts (not a failure — saves API cost)
+llm_gate_enabled = true
+llm_min_transcript_chars = 40
+llm_min_transcript_words = 8
+llm_max_repeat_word_ratio = 0.65   # 0 = disable repetitive-token check
+llm_min_unique_word_ratio = 0.12   # 0 = disable uniqueness check
 merge_chunks = true          # join consecutive recorder splits (e.g. 15 min max)
 merge_to_mp3 = true          # after success: *_merged.wav → *_merged.mp3 (sources stay WAV; needs ffmpeg)
 merge_mp3_bitrate = "64k"    # speech-friendly mono bitrate for the merge artifact

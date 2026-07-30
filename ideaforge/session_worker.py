@@ -509,6 +509,7 @@ def _process_group_body(
         print("    📄 Using existing transcript")
 
     empty_recording = False
+    gate_skip_reason: Optional[str] = None
     if (stages.transcribe or stages.diarize) and transcript_path:
         if _purge_empty_merged_audio(
             process_path=process_path,
@@ -517,50 +518,64 @@ def _process_group_body(
         ):
             print(f"   🗑️  Removed empty recording audio: {process_path.name}")
             empty_recording = True
+            gate_skip_reason = "empty transcript"
 
     if stages.llm and transcript_path and transcript_path.exists() and not empty_recording:
         from ideaforge.creative_intent import resolve_summarize_context
+        from ideaforge.transcript_gate import assess_transcript_quality
 
         transcript_text = transcript_path.read_text(encoding="utf-8")
-        output_intent, summarize_label = resolve_summarize_context(
+        gate = assess_transcript_quality(
             transcript_text,
-            cfg.mode,
-            cfg.creative_settings(),
+            cfg.transcript_gate_settings(),
         )
-        if reporter is not None:
-            reporter.relabel_step(StepId.SUMMARIZE, summarize_label)
-            reporter.set_output_intent(output_intent)
-            reporter.set_step_active(StepId.SUMMARIZE, detail=transcript_path.stem)
-        process_transcript(
-            transcript_path,
-            work_folder,
-            mode=cfg.mode,  # type: ignore[arg-type]
-            backend=cfg.resolve_llm_backend(),
-            ollama_model=cfg.ollama_model,
-            grok_model=cfg.grok_model,
-            claude_model=cfg.claude_model,
-            output_format=cfg.output_format,
-            force=force,
-            archive=archive,
-            export_settings=export_settings,
-            recording_time=group.recording_time,
-            creative_settings=cfg.creative_settings(),
-            suno_style=cfg.creative_suno_style(),
-            udio_style=cfg.creative_udio_style(),
-        )
-        if reporter is not None:
-            reporter.mark_step_done(StepId.SUMMARIZE)
+        if gate.skip_llm:
+            empty_recording = True
+            gate_skip_reason = gate.reason or "low-quality transcript"
+            print(f"   ⏭️  Skipping LLM — {gate_skip_reason}")
+            if reporter is not None:
+                reporter.skip_step(StepId.SUMMARIZE)
+                reporter.touch(detail=f"Skipped LLM: {gate_skip_reason}")
+        else:
+            output_intent, summarize_label = resolve_summarize_context(
+                transcript_text,
+                cfg.mode,
+                cfg.creative_settings(),
+            )
+            if reporter is not None:
+                reporter.relabel_step(StepId.SUMMARIZE, summarize_label)
+                reporter.set_output_intent(output_intent)
+                reporter.set_step_active(StepId.SUMMARIZE, detail=transcript_path.stem)
+            process_transcript(
+                transcript_path,
+                work_folder,
+                mode=cfg.mode,  # type: ignore[arg-type]
+                backend=cfg.resolve_llm_backend(),
+                ollama_model=cfg.ollama_model,
+                grok_model=cfg.grok_model,
+                claude_model=cfg.claude_model,
+                output_format=cfg.output_format,
+                force=force,
+                archive=archive,
+                export_settings=export_settings,
+                recording_time=group.recording_time,
+                creative_settings=cfg.creative_settings(),
+                suno_style=cfg.creative_suno_style(),
+                udio_style=cfg.creative_udio_style(),
+            )
+            if reporter is not None:
+                reporter.mark_step_done(StepId.SUMMARIZE)
 
-        from ideaforge.remote_sync import maybe_sync_after_notes
+            from ideaforge.remote_sync import maybe_sync_after_notes
 
-        maybe_sync_after_notes(
-            work_folder=work_folder,
-            archive_root=cfg.archive.expanduser().resolve(),
-            device_root=archive,
-            session_stem=session_stem,
-            settings=cfg.sync_settings(),
-            force=force,
-        )
+            maybe_sync_after_notes(
+                work_folder=work_folder,
+                archive_root=cfg.archive.expanduser().resolve(),
+                device_root=archive,
+                session_stem=session_stem,
+                settings=cfg.sync_settings(),
+                force=force,
+            )
 
     if stages.copy or stages.transcribe:
         for audio_file, file_hash in file_hashes.items():
@@ -610,7 +625,11 @@ def _process_group_body(
                 print(f"   ⚠️  merge_to_mp3 skipped — kept WAV: {exc}")
 
     if empty_recording:
-        brief = RecordingResult(stem=session_stem, empty=True)
+        brief = RecordingResult(
+            stem=session_stem,
+            empty=True,
+            skip_reason=gate_skip_reason,
+        )
     else:
         brief = read_summary_brief(paths["summary_json"], session_stem=session_stem)
     return 1, 0, brief

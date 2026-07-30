@@ -171,6 +171,12 @@ class IdeaForgeConfig:
     export_obsidian_note: str = "IdeaForge/Action Items.md"
     min_file_size_bytes: int = 50_000
     delete_empty_merged_audio: bool = True
+    # Skip LLM when transcript is empty/junk (not a failure; saves API cost).
+    llm_gate_enabled: bool = True
+    llm_min_transcript_chars: int = 40
+    llm_min_transcript_words: int = 8
+    llm_max_repeat_word_ratio: float = 0.65  # 0 disables
+    llm_min_unique_word_ratio: float = 0.12  # 0 disables
     merge_chunks: bool = True
     # After a successful multi-chunk session, encode *_merged.wav → *_merged.mp3
     # and drop the large WAV (sources stay WAV until purged separately).
@@ -251,6 +257,16 @@ class IdeaForgeConfig:
             cfg.min_file_size_bytes = p.get("min_file_size_bytes", cfg.min_file_size_bytes)
             if "delete_empty_merged_audio" in p:
                 cfg.delete_empty_merged_audio = bool(p["delete_empty_merged_audio"])
+            if "llm_gate_enabled" in p:
+                cfg.llm_gate_enabled = bool(p["llm_gate_enabled"])
+            if "llm_min_transcript_chars" in p:
+                cfg.llm_min_transcript_chars = max(0, int(p["llm_min_transcript_chars"]))
+            if "llm_min_transcript_words" in p:
+                cfg.llm_min_transcript_words = max(0, int(p["llm_min_transcript_words"]))
+            if "llm_max_repeat_word_ratio" in p:
+                cfg.llm_max_repeat_word_ratio = float(p["llm_max_repeat_word_ratio"])
+            if "llm_min_unique_word_ratio" in p:
+                cfg.llm_min_unique_word_ratio = float(p["llm_min_unique_word_ratio"])
             if "merge_chunks" in p:
                 cfg.merge_chunks = bool(p["merge_chunks"])
             if "merge_to_mp3" in p:
@@ -381,6 +397,17 @@ class IdeaForgeConfig:
                         str(v) for v in udio["style_variations"]
                     ]
         return cfg
+
+    def transcript_gate_settings(self) -> "TranscriptGateSettings":
+        from ideaforge.transcript_gate import TranscriptGateSettings
+
+        return TranscriptGateSettings(
+            enabled=self.llm_gate_enabled,
+            min_chars=self.llm_min_transcript_chars,
+            min_words=self.llm_min_transcript_words,
+            max_repeat_word_ratio=self.llm_max_repeat_word_ratio,
+            min_unique_word_ratio=self.llm_min_unique_word_ratio,
+        )
 
     def creative_settings(self) -> CreativeSettings:
         return CreativeSettings(

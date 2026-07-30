@@ -21,6 +21,8 @@ class RecordingResult:
     skipped: bool = False
     failed: bool = False
     empty: bool = False
+    # Human reason when empty/junk gate skipped LLM (not a failure).
+    skip_reason: Optional[str] = None
 
 
 @dataclass
@@ -49,7 +51,10 @@ def format_completion_notification(
     if result.files_processed == 1 and result.recordings:
         rec = next((r for r in result.recordings if not r.skipped), result.recordings[0])
         if rec.empty:
-            return title, rec.stem, "Silent recording — audio discarded"
+            message = rec.skip_reason or "Silent recording — audio discarded"
+            if rec.skip_reason and not rec.skip_reason.lower().startswith("skip"):
+                message = f"Skipped LLM — {rec.skip_reason}"
+            return title, rec.stem, message
         subtitle = rec.title or rec.stem
         parts: List[str] = []
         if rec.action_items:

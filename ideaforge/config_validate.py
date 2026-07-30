@@ -58,6 +58,11 @@ SECTION_KEYS: Dict[str, Set[str]] = {
         "diarize",
         "min_file_size_bytes",
         "delete_empty_merged_audio",
+        "llm_gate_enabled",
+        "llm_min_transcript_chars",
+        "llm_min_transcript_words",
+        "llm_max_repeat_word_ratio",
+        "llm_min_unique_word_ratio",
         "merge_chunks",
         "merge_to_mp3",
         "merge_mp3_bitrate",
@@ -195,6 +200,14 @@ def validate_config_values(cfg: IdeaForgeConfig) -> List[str]:
         issues.append("processing.max_parallel_sessions must be >= 1")
     if cfg.min_file_size_bytes < 0:
         issues.append("processing.min_file_size_bytes must be >= 0")
+    if cfg.llm_min_transcript_chars < 0:
+        issues.append("processing.llm_min_transcript_chars must be >= 0")
+    if cfg.llm_min_transcript_words < 0:
+        issues.append("processing.llm_min_transcript_words must be >= 0")
+    if not 0.0 <= cfg.llm_max_repeat_word_ratio <= 1.0:
+        issues.append("processing.llm_max_repeat_word_ratio must be between 0.0 and 1.0")
+    if not 0.0 <= cfg.llm_min_unique_word_ratio <= 1.0:
+        issues.append("processing.llm_min_unique_word_ratio must be between 0.0 and 1.0")
     if cfg.chunk_gap_seconds < 0:
         issues.append("processing.chunk_gap_seconds must be >= 0")
     if cfg.merge_min_chunk_seconds < 0:
