@@ -4,6 +4,8 @@ All notable changes to IdeaForge are documented here. Format follows [Keep a Cha
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-07-30
+
 ### Added
 
 - **Pre-LLM transcript gate** — Skip summarization for empty, too-short, or highly repetitive transcripts (`llm_gate_enabled`, min chars/words, junk heuristics). Intentional skips are not failures; notification shows the reason.
@@ -12,6 +14,11 @@ All notable changes to IdeaForge are documented here. Format follows [Keep a Cha
 - **Creative regenerate** — `ideaforge --regenerate-creative --source … --session STEM` re-runs song-idea LLM without re-transcribing; menubar last-notes can open Suno/Udio sidecars.
 - **Golden markdown contracts** — `tests/goldens/` freezes meeting + song markdown rendering; CI matrix includes Python 3.13.
 - **`ideaforge process`** — Preferred pipeline subcommand; root-level flags remain aliases. Help epilog lists primary operator commands first.
+
+### Fixed
+
+- **Menubar multi-note Open Last Notes** — Parent item stays clickable (opens first note); submenu picks each file. rumps greys out items with `callback=None`.
+- **Pytest no longer overwrites real `last_notes.json`** — Default Application Support store is skipped during tests.
 
 ## [1.2.0] - 2026-07-30
 
@@ -217,6 +224,8 @@ All notable changes to IdeaForge are documented here. Format follows [Keep a Cha
 
 Prior releases were not changelogged in-repo. See git history for daemon, Grok/Claude/Ollama backends, faster-whisper + pyannote diarization, and USB ingest.
 
+[1.2.1]: https://github.com/sm00thindian/IdeaForge/releases/tag/v1.2.1
+[1.2.0]: https://github.com/sm00thindian/IdeaForge/releases/tag/v1.2.0
 [1.0.1]: https://github.com/sm00thindian/IdeaForge/releases/tag/v1.0.1
 [1.0.0]: https://github.com/sm00thindian/IdeaForge/releases/tag/v1.0.0
 [0.9.0]: https://github.com/sm00thindian/IdeaForge/releases/tag/v0.9.0
