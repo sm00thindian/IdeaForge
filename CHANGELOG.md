@@ -7,6 +7,7 @@ All notable changes to IdeaForge are documented here. Format follows [Keep a Cha
 ### Added
 
 - **Pre-LLM transcript gate** — Skip summarization for empty, too-short, or highly repetitive transcripts (`llm_gate_enabled`, min chars/words, junk heuristics). Intentional skips are not failures; notification shows the reason.
+- **Stage ETA** — Rough ``~Nm left`` estimates for transcribe/diarize from audio duration × RTF baselines (`stage_eta.py`); shown in menubar detail/elapsed and `status.json` (`eta_seconds`).
 
 ## [1.2.0] - 2026-07-30
 

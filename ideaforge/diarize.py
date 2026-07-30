@@ -144,17 +144,24 @@ def diarize_audio(
         pipeline = _load_pipeline(hf_token)
 
         audio_np, _ = load_audio_mono_16k(audio_path)
-        duration_min = max(1, int(len(audio_np) / TARGET_SAMPLE_RATE / 60))
+        duration_seconds = len(audio_np) / float(TARGET_SAMPLE_RATE)
+        duration_min = max(1, int(duration_seconds / 60))
         status_touch(
             stage=Stage.DIARIZING,
             clear_progress=True,
             detail=f"Analyzing {audio_path.name} (~{duration_min} min audio)",
+            audio_duration_seconds=duration_seconds,
         )
         reporter = active_reporter()
         if reporter is not None:
             reporter.set_step_active(
                 StepId.DIARIZE,
                 detail=f"{audio_path.name} (~{duration_min} min)",
+            )
+            # Re-apply duration after set_step_active so ETA uses diarize RTF.
+            status_touch(
+                stage=Stage.DIARIZING,
+                audio_duration_seconds=duration_seconds,
             )
         waveform = torch.from_numpy(audio_np).unsqueeze(0)
         diar_kwargs = _diarization_kwargs(min_speakers, max_speakers)
@@ -169,6 +176,7 @@ def diarize_audio(
             stage=Stage.DIARIZING,
             progress=1.0,
             detail=f"{len(turns)} speaker turns detected",
+            clear_eta=True,
         )
         print(f"    ✓ Diarization complete ({len(turns)} speaker turns)")
         return turns

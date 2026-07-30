@@ -339,6 +339,9 @@ class PipelineStatus:
     error: Optional[str] = None
     owner_pid: Optional[int] = None
     output_intent: Optional[str] = None
+    # Rough ETA for the active long stage (transcribe/diarize).
+    eta_seconds: Optional[float] = None
+    audio_duration_seconds: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
         payload = asdict(self)
@@ -355,6 +358,8 @@ class PipelineStatus:
             )
             for item in data.get("steps", [])
         ]
+        eta = data.get("eta_seconds")
+        audio_dur = data.get("audio_duration_seconds")
         return cls(
             state=str(data.get("state", STATE_IDLE)),
             device=data.get("device"),
@@ -373,6 +378,8 @@ class PipelineStatus:
             error=data.get("error"),
             owner_pid=data.get("owner_pid"),
             output_intent=data.get("output_intent"),
+            eta_seconds=float(eta) if eta is not None else None,
+            audio_duration_seconds=float(audio_dur) if audio_dur is not None else None,
         )
 
 
@@ -807,6 +814,13 @@ def format_elapsed(status: PipelineStatus) -> str:
     return _format_duration(status.elapsed_seconds)
 
 
+def format_eta(status: PipelineStatus) -> Optional[str]:
+    """Rough ETA label for menubar / status report, or None."""
+    from ideaforge.stage_eta import format_eta_label
+
+    return format_eta_label(status.eta_seconds)
+
+
 def active_reporter() -> Optional["StatusReporter"]:
     return _active_reporter.get()
 
@@ -826,11 +840,20 @@ def status_touch(
     progress: Optional[float] = None,
     detail: Optional[str] = None,
     clear_progress: bool = False,
+    audio_duration_seconds: Optional[float] = None,
+    clear_eta: bool = False,
 ) -> None:
     reporter = active_reporter()
     if reporter is None:
         return
-    reporter.touch(stage=stage, progress=progress, detail=detail, clear_progress=clear_progress)
+    reporter.touch(
+        stage=stage,
+        progress=progress,
+        detail=detail,
+        clear_progress=clear_progress,
+        audio_duration_seconds=audio_duration_seconds,
+        clear_eta=clear_eta,
+    )
 
 
 class StatusReporter:
@@ -845,6 +868,7 @@ class StatusReporter:
         self._step_ids: List[str] = []
         self._lock = threading.RLock()
         self._active_sessions = 0
+        self._stage_started_at: Optional[float] = None
 
     def _claim_owner(self) -> None:
         self._status.owner_pid = self._owner_pid
@@ -976,6 +1000,9 @@ class StatusReporter:
             self._status.progress = None
             self._status.detail = recording_stem
             self._status.error = None
+            self._status.eta_seconds = None
+            self._status.audio_duration_seconds = None
+            self._stage_started_at = None
             self._step_ids = [step_id for step_id, _ in step_plan]
             self._status.steps = [
                 StatusStep(id=step_id, label=step_label) for step_id, step_label in step_plan
@@ -988,10 +1015,12 @@ class StatusReporter:
                 if step.id == step_id:
                     step.status = STEP_ACTIVE
                     self._status.stage = step.label
+                    self._stage_started_at = time.monotonic()
                 elif step.status == STEP_ACTIVE:
                     step.status = STEP_DONE
             if detail is not None:
                 self._status.detail = detail
+            self._refresh_eta_locked()
         self._write()
 
     def relabel_step(self, step_id: str, label: str) -> None:
@@ -1012,6 +1041,7 @@ class StatusReporter:
             for step in self._status.steps:
                 if step.id == step_id:
                     step.status = STEP_DONE
+            self._status.eta_seconds = None
         self._write()
 
     def skip_step(self, step_id: str) -> None:
@@ -1019,7 +1049,21 @@ class StatusReporter:
             for step in self._status.steps:
                 if step.id == step_id:
                     step.status = STEP_SKIPPED
+            self._status.eta_seconds = None
         self._write()
+
+    def _refresh_eta_locked(self) -> None:
+        from ideaforge.stage_eta import estimate_remaining_seconds
+
+        stage_elapsed = None
+        if self._stage_started_at is not None:
+            stage_elapsed = time.monotonic() - self._stage_started_at
+        self._status.eta_seconds = estimate_remaining_seconds(
+            stage=self._status.stage,
+            audio_duration_seconds=self._status.audio_duration_seconds,
+            progress=self._status.progress,
+            stage_elapsed_seconds=stage_elapsed,
+        )
 
     def touch(
         self,
@@ -1028,9 +1072,13 @@ class StatusReporter:
         progress: Optional[float] = None,
         detail: Optional[str] = None,
         clear_progress: bool = False,
+        audio_duration_seconds: Optional[float] = None,
+        clear_eta: bool = False,
     ) -> None:
         with self._lock:
             if stage is not None:
+                if stage != self._status.stage:
+                    self._stage_started_at = time.monotonic()
                 self._status.stage = stage
             if clear_progress:
                 self._status.progress = None
@@ -1038,6 +1086,15 @@ class StatusReporter:
                 self._status.progress = max(0.0, min(1.0, progress))
             if detail is not None:
                 self._status.detail = detail
+            if audio_duration_seconds is not None:
+                self._status.audio_duration_seconds = max(
+                    0.0, float(audio_duration_seconds)
+                )
+            if clear_eta:
+                self._status.eta_seconds = None
+                self._status.audio_duration_seconds = None
+            else:
+                self._refresh_eta_locked()
         self._write()
 
     def set_error(self, message: str) -> None:
@@ -1046,6 +1103,7 @@ class StatusReporter:
         self._status.detail = message
         self._status.error = message
         self._status.progress = None
+        self._status.eta_seconds = None
         self._write()
 
     def complete_run(self, *, processed: int, skipped: int = 0) -> None:
@@ -1058,6 +1116,7 @@ class StatusReporter:
         self._status.state = STATE_COMPLETE
         self._status.stage = Stage.COMPLETE
         self._status.detail = detail
+        self._status.eta_seconds = None
         self._status.progress = 1.0
         self._status.owner_pid = None
         for step in self._status.steps:

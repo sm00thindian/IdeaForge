@@ -90,6 +90,7 @@ def transcribe_audio(
         stage=Stage.TRANSCRIBING,
         clear_progress=True,
         detail=duration_hint or audio_path.name,
+        audio_duration_seconds=duration_seconds,
     )
 
     backend = resolve_whisper_backend(whisper_backend)
@@ -106,6 +107,7 @@ def transcribe_audio(
                 stage=Stage.TRANSCRIBING,
                 progress=progress,
                 detail=detail,
+                audio_duration_seconds=duration_seconds,
             ),
         )
 

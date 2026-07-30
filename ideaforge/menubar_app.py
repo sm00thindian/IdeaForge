@@ -39,6 +39,7 @@ from ideaforge.status import (
     PipelineStatus,
     default_status_path,
     format_elapsed,
+    format_eta,
     load_last_notes,
     load_status,
     menu_bar_title,
@@ -227,13 +228,17 @@ class IdeaForgeMenuBarApp:
             detail_parts.append(status.detail)
         if status.progress is not None and status.state == STATE_PROCESSING:
             detail_parts.append(f"{int(status.progress * 100)}%")
+        eta_label = format_eta(status)
+        if eta_label and status.state == STATE_PROCESSING:
+            detail_parts.append(eta_label)
         self.detail_item.title = " · ".join(detail_parts) if detail_parts else "—"
 
         elapsed = format_elapsed(status)
         session_hint = ""
         if status.sessions_total > 1 and status.session:
             session_hint = f" · session {status.session}/{status.sessions_total}"
-        self.elapsed_item.title = f"Elapsed {elapsed}{session_hint}"
+        eta_suffix = f" · ETA {eta_label}" if eta_label and status.state == STATE_PROCESSING else ""
+        self.elapsed_item.title = f"Elapsed {elapsed}{session_hint}{eta_suffix}"
         self.pipeline_item.title = _pipeline_summary(status)
 
         if failure_count:
