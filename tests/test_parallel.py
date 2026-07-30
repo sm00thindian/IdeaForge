@@ -64,7 +64,10 @@ def test_process_source_parallel_sessions(tmp_path: Path):
         time.sleep(0.05)
         call_order.append(f"gpu-end:{audio_path.stem}")
         transcript = output_dir / f"{kwargs.get('output_stem', audio_path.stem)}.txt"
-        transcript.write_text("x" * 60, encoding="utf-8")
+        transcript.write_text(
+            "Meeting notes about the project timeline and next steps for the team. " * 2,
+            encoding="utf-8",
+        )
         return transcript
 
     def fake_llm(transcript_path, output_dir, **kwargs):

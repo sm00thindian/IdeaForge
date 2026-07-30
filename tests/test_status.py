@@ -129,7 +129,7 @@ def test_daemon_does_not_overwrite_foreign_processing_status(tmp_path):
         path,
     )
     daemon = StatusReporter(path)
-    with patch("ideaforge.status._pid_alive", return_value=True):
+    with patch("ideaforge.status_cli_probe._pid_alive", return_value=True):
         daemon.set_watching(device="IdeaForge")
     loaded = load_status(path)
     assert loaded.state == STATE_PROCESSING
@@ -149,7 +149,7 @@ def test_daemon_can_watch_after_foreign_owner_completes(tmp_path):
         path,
     )
     daemon = StatusReporter(path)
-    with patch("ideaforge.status.find_cli_pipeline_pids", return_value=[]):
+    with patch("ideaforge.status_cli_probe.find_cli_pipeline_pids", return_value=[]):
         daemon.set_watching()
     loaded = load_status(path)
     assert loaded.state == STATE_WATCHING
@@ -159,7 +159,7 @@ def test_daemon_skips_watching_when_cli_pipeline_running(tmp_path):
     path = tmp_path / "status.json"
     save_status(PipelineStatus(state=STATE_WATCHING), path)
     daemon = StatusReporter(path)
-    with patch("ideaforge.status.find_cli_pipeline_pids", return_value=[4242]):
+    with patch("ideaforge.status_cli_probe.find_cli_pipeline_pids", return_value=[4242]):
         daemon.set_watching(device="IdeaForge")
     loaded = load_status(path)
     assert loaded.state == STATE_WATCHING
@@ -181,8 +181,11 @@ def test_resolve_display_status_detects_cli_pipeline():
             StatusStep(id=StepId.DIARIZE, label=StepLabel.DIARIZE, status=STEP_ACTIVE),
         ],
     )
-    with patch("ideaforge.status.find_cli_pipeline_pids", return_value=[4242]):
-        with patch("ideaforge.status._status_from_cli_pipeline", return_value=enriched):
+    with patch("ideaforge.status_cli_probe.find_cli_pipeline_pids", return_value=[4242]):
+        with patch(
+            "ideaforge.status_cli_probe._status_from_cli_pipeline",
+            return_value=enriched,
+        ):
             shown = resolve_display_status(status)
     assert shown.state == STATE_PROCESSING
     assert shown.stage == Stage.DIARIZING
