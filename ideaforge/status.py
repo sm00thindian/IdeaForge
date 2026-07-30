@@ -207,10 +207,17 @@ def record_last_notes_from_recordings(
     recordings: List[Any],
     path: Optional[Path] = None,
 ) -> List[LastNote]:
-    """If any markdown notes were produced, replace the last-notes list with them."""
+    """If any markdown notes were produced, replace the last-notes list with them.
+
+    Skips writing the default Application Support store during pytest so unit
+    tests do not overwrite the operator's real last-notes menu.
+    """
     notes = last_notes_from_recordings(recordings)
-    if notes:
-        save_last_notes(notes, path=path)
+    if not notes:
+        return notes
+    if path is None and os.environ.get("PYTEST_CURRENT_TEST"):
+        return notes
+    save_last_notes(notes, path=path)
     return notes
 
 

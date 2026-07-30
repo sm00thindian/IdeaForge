@@ -24,10 +24,12 @@ from ideaforge.status import (
 
 
 class _MenuItemStub:
-    def __init__(self, title: str = "") -> None:
+    def __init__(self, title: str = "", callback=None, **_kwargs) -> None:
         self.title = title
-        self.callback = None
+        self.callback = callback
         self.children: list = []
+        self._menu = None
+        self._menuitem = type("NS", (), {"setEnabled_": lambda self, v: None, "setSubmenu_": lambda self, v: None})()
 
     def set_callback(self, cb) -> None:
         self.callback = cb
@@ -36,6 +38,7 @@ class _MenuItemStub:
         self.children.clear()
 
     def add(self, item) -> None:
+        self._menu = True
         self.children.append(item)
 
 
@@ -206,5 +209,6 @@ def test_menubar_shows_multiple_last_notes_submenu(tmp_path: Path):
         app.refresh(None)
 
     assert app.last_notes_item.title == "Open Last Notes (2)"
+    assert app.last_notes_item.callback is not None  # parent must stay clickable
     assert len(app.last_notes_item.children) == 2
-    assert app.last_notes_item.children[1].title == "🎵 Blue skies"
+    assert app.last_notes_item.children[1].title == "2. 🎵 Blue skies"

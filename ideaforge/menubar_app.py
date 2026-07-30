@@ -262,13 +262,24 @@ class IdeaForgeMenuBarApp:
         self._last_notes_signature = signature
         self._rebuild_last_notes_menu(notes)
 
-    def _rebuild_last_notes_menu(self, notes: List[LastNote]) -> None:
-        rumps = self._rumps
-        # Drop prior submenu children (rumps MenuItem behaves like a mapping).
+    def _clear_last_notes_submenu(self) -> None:
+        """Remove prior submenu children without greying out the parent item."""
         try:
-            self.last_notes_item.clear()
+            # rumps clear() requires an existing NSMenu; ignore if never nested.
+            if getattr(self.last_notes_item, "_menu", None) is not None:
+                self.last_notes_item.clear()
         except Exception:
             pass
+        # Detach empty submenu so a single-note click target is not a submenu header.
+        try:
+            self.last_notes_item._menu = None
+            self.last_notes_item._menuitem.setSubmenu_(None)
+        except Exception:
+            pass
+
+    def _rebuild_last_notes_menu(self, notes: List[LastNote]) -> None:
+        rumps = self._rumps
+        self._clear_last_notes_submenu()
 
         if not notes:
             self.last_notes_item.title = "No recent notes"
@@ -279,24 +290,32 @@ class IdeaForgeMenuBarApp:
             note = notes[0]
             self.last_notes_item.title = f"Open Notes: {note.menu_label}"
             path = note.path
-
-            def _open_one(_sender=None, note_path: str = path) -> None:
-                _open_path(Path(note_path))
-
-            self.last_notes_item.set_callback(_open_one)
+            self.last_notes_item.set_callback(
+                lambda _sender=None, note_path=path: _open_path(Path(note_path))
+            )
             return
 
+        # Multiple notes: keep parent ENABLED (rumps greys out callback=None).
+        # Click parent → open first note; hover submenu → pick a specific file.
         self.last_notes_item.title = f"Open Last Notes ({len(notes)})"
-        self.last_notes_item.set_callback(None)
-        for note in notes:
+        first_path = notes[0].path
+        self.last_notes_item.set_callback(
+            lambda _sender=None, note_path=first_path: _open_path(Path(note_path))
+        )
+        for index, note in enumerate(notes, start=1):
             path = note.path
-            item = rumps.MenuItem(note.menu_label)
-
-            def _open_note(_sender=None, note_path: str = path) -> None:
-                _open_path(Path(note_path))
-
-            item.set_callback(_open_note)
+            # Unique titles so rumps dict keys do not collide / drop entries.
+            label = f"{index}. {note.menu_label}"
+            item = rumps.MenuItem(
+                label,
+                callback=lambda _sender=None, note_path=path: _open_path(Path(note_path)),
+            )
             self.last_notes_item.add(item)
+        # Ensure parent stays enabled after nested menu attachment.
+        try:
+            self.last_notes_item._menuitem.setEnabled_(True)
+        except Exception:
+            pass
 
     def _update_daemon_controls(self, daemon: ServiceHealth) -> None:
         can_manage = daemon.installed
