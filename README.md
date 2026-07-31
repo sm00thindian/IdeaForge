@@ -79,8 +79,14 @@ Meeting prompt domain (optional):
 
 ```toml
 [processing]
-meeting_domain = "general"   # or "fed_grc" for OSCAL/Xacta/FedRAMP terminology pack
+meeting_domain = "auto"      # detect from transcript (default)
+# meeting_domain = "general" # force neutral scribe
+# meeting_domain = "fed_grc" # force OSCAL/Xacta/FedRAMP pack
 ```
+
+With ``auto``, IdeaForge starts from the general pack and switches to **fed_grc** when the
+transcript mentions Federal Reserve / FedRAMP / OSCAL / GRC / governance / systems architecture
+language.
 
 ### Song idea mode
 

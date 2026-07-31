@@ -140,8 +140,8 @@ class IdeaForgeConfig:
     whisper_beam_size: int = 1
     whisper_language: Optional[str] = None
     mode: str = "meeting"
-    # Meeting prompt domain pack: general | fed_grc
-    meeting_domain: str = "general"
+    # Meeting prompt domain pack: auto (detect) | general | fed_grc
+    meeting_domain: str = "auto"
     output_format: str = "both"  # md | json | both
     diarize: bool = False
     min_speakers: Optional[int] = None

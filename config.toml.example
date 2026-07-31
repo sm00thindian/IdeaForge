@@ -74,7 +74,7 @@ language = "en"          # force English (omit for auto-detect)
 
 [processing]
 mode = "auto"            # meeting | creative | auto (auto = meeting unless keyword trigger)
-meeting_domain = "general"  # general | fed_grc (domain pack for meeting prompts)
+meeting_domain = "auto"     # auto (detect) | general | fed_grc
 output_format = "both"   # md | json | both
 diarize = false
 min_file_size_bytes = 50000

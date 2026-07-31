@@ -6,7 +6,7 @@ All notable changes to IdeaForge are documented here. Format follows [Keep a Cha
 
 ### Added
 
-- **Meeting domain packs** — `processing.meeting_domain = general | fed_grc` (default general). Fed/GRC terminology is optional, not baked into every meeting prompt.
+- **Meeting domain packs** — `processing.meeting_domain = auto | general | fed_grc` (default **auto**). Auto starts from general and switches to **fed_grc** when Federal Reserve / GRC / governance / systems-architecture language appears in the transcript.
 
 ### Changed
 

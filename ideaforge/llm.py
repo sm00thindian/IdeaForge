@@ -143,6 +143,20 @@ def process_transcript(
         else:
             song_idea_content = transcript
 
+    resolved_domain = meeting_domain
+    if effective_mode != "creative":
+        from ideaforge.meeting_domain import resolve_meeting_domain
+
+        detection = resolve_meeting_domain(meeting_domain, transcript)
+        resolved_domain = detection.domain
+        if detection.matched:
+            print(
+                f"    🏛  Meeting domain: {resolved_domain} "
+                f"({detection.reason}; matched: {', '.join(detection.matched[:5])})"
+            )
+        else:
+            print(f"    🏛  Meeting domain: {resolved_domain} ({detection.reason})")
+
     resolved_backend = _resolve_backend(backend)
     temperature = (
         creative_settings.temperature
@@ -163,7 +177,7 @@ def process_transcript(
         suno_style=suno_style,
         udio_style=udio_style,
         creative_settings=creative_settings,
-        meeting_domain=meeting_domain,
+        meeting_domain=resolved_domain,
         recording_date=rec_date,
         recording_date_source=rec_src,
     )

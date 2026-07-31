@@ -127,7 +127,7 @@ LLM_BACKENDS = {"auto", "ollama", "grok", "claude"}
 WHISPER_BACKENDS = {"auto", "mlx", "faster"}
 WHISPER_MODELS = {"tiny", "base", "small", "medium", "large-v3"}
 MODES = {"meeting", "creative", "auto"}
-MEETING_DOMAINS = {"general", "fed_grc"}
+MEETING_DOMAINS = {"auto", "general", "fed_grc"}
 OUTPUT_FORMATS = {"md", "json", "both"}
 
 
