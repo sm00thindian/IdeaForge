@@ -554,7 +554,10 @@ def main(argv: Optional[list] = None) -> int:
         return 0
 
     if args.command == "speakers" and args.speakers_action == "register":
-        from ideaforge.speaker_library import register_speaker_from_session
+        from ideaforge.speaker_library import (
+            SpeakerEmbeddingError,
+            register_speaker_from_session,
+        )
 
         cfg.resolve_secrets()
         try:
@@ -564,11 +567,12 @@ def main(argv: Optional[list] = None) -> int:
                 speaker_label=args.speaker_label,
                 name=args.name,
             )
-        except (FileNotFoundError, KeyError, RuntimeError) as exc:
+        except (FileNotFoundError, KeyError, RuntimeError, SpeakerEmbeddingError) as exc:
             print(f"❌ {exc}")
             return 1
         print(f"✓ Registered {entry.name} from {args.session_stem} ({args.speaker_label})")
         print(f"  id: {entry.speaker_id}")
+        print("  Future diarized sessions will match this voice when library_auto_apply is on.")
         return 0
 
     if args.command == "device" and args.device_action == "clock":

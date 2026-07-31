@@ -498,13 +498,21 @@ ideaforge sync --source ~/IdeaForge --scope archive --force
 
 `--dry-run` previews rsync; `--force` repeats a path already recorded in `.sync_log.json`.
 
-**Speaker library** — when diarization is on, pyannote embeddings are matched against `~/Library/Application Support/IdeaForge/speaker_library.json`. Configure in `[speakers]`:
+**Speaker library** — when diarization is on, voice embeddings are matched against `~/Library/Application Support/IdeaForge/speaker_library.json`. Seed your own voice once after a good meeting (you appear in most recordings):
+
+```bash
+# After a diarized session where you are SPEAKER_05 (see Participants table):
+ideaforge speakers register V2014-10-06-07-44-57 SPEAKER_05 "Ki"
+ideaforge speakers list
+```
+
+Embeddings use `pyannote/wespeaker-voxceleb-resnet34-LM` (public) by default; requires `HF_TOKEN` the same as diarization. Auto-learn only stores speakers that already have a non-`SPEAKER_xx` name (from the library or `[speakers.map]`), so the first enrollment is usually a manual `register`.
 
 ```toml
 [speakers]
 library_enabled = true
 library_auto_apply = true       # apply known names to new sessions
-library_auto_learn = true       # learn from [speakers.map] overrides
+library_auto_learn = true       # learn new named labels after match/map
 library_match_threshold = 0.75
 ```
 
@@ -554,7 +562,7 @@ Point Obsidian export or your own tools at `*_summary.md` / `*_summary.json` und
 
 | Symptom | Likely cause | What to do |
 |---------|--------------|------------|
-| Wrong meeting date in notes | Recorder clock in `recset.txt` | Archive date folders follow file mtime at ingest (usually matches filename when the device clock is correct). Session stems come from filenames. LLM-inferred dates in notes are not authoritative — use archive paths and `*_summary.json` metadata. |
+| Wrong meeting date in notes | Recorder clock wrong when recording (battery reset → factory year like 2014) | Daemon syncs `recset.txt` on connect for *future* files; existing WAV names stay wrong. Dating rejects implausible filename/mtime years and prefers the archive `YYYY-MM-DD` folder. Re-run notes or fix `recording_date` in `*_summary.json`. |
 | Short clip merged into long session | Gap rule matched unrelated files | Raise `merge_min_chunk_seconds` (default 600). Short recordings no longer chain onto prior long chunks. |
 | Reprocess picked `*_merged.WAV` | Derived merge artifact in folder | Fixed in 0.5.0 — derived audio is skipped. Update and re-run. |
 | Daemon log shows "skipping" | No new files since last pass | Normal idle behavior after processing; plug in new recordings or check device `RECORD/` folder. |
@@ -564,7 +572,11 @@ Point Obsidian export or your own tools at `*_summary.md` / `*_summary.json` und
 
 ### Recorder clock
 
-Z28/Z29 devices store wall time in `recset.txt` (e.g. `TIME:14:24 2025/7/7`). Filenames use that clock. If the device date is wrong, filenames (and often archive date folders) show the wrong year. The daemon can fix `recset.txt` before ingest (`sync_device_clock = true`). Existing on-device WAV names are unchanged. Treat archive paths and `*_summary.json` as ground truth, not LLM-inferred dates in prose.
+Z28/Z29 devices store wall time in `recset.txt` (e.g. `TIME:14:24 2025/7/7`). Filenames use that clock. If the battery dies, the clock often resets to a factory default year (commonly ~2014), so new WAVs get `R2014-…` / `V2014-…` names even though you recorded today.
+
+The daemon can fix `recset.txt` before ingest (`sync_device_clock = true`) so **future** recordings are named correctly. Existing on-device WAV names are unchanged. At ingest and note generation, IdeaForge skips implausible timestamps (more than ~13 months from now) and falls back to: recset (when plausible) → filename → archive date folder → mtime → system time. Session package folders still keep the original stem (including a wrong year) for dedup/identity.
+
+Treat archive date folders and `*_summary.json` `recording_date` as ground truth, not the year embedded in the session stem.
 
 ```bash
 ideaforge device clock              # compare device vs system time

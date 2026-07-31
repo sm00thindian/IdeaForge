@@ -8,7 +8,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, List, Mapping, Optional, Sequence
 
-from ideaforge.session_time import RECORDING_STEM_PATTERN, parse_recording_timestamp
+from ideaforge.session_time import (
+    RECORDING_STEM_PATTERN,
+    is_plausible_recording_time,
+    parse_recording_timestamp,
+)
 
 DATE_FOLDER_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 INVALID_FILENAME_CHARS = re.compile(r'[/\\:*?"<>|]')
@@ -52,18 +56,41 @@ def date_prefix_for_session(
     session_stem: str = "",
     folder: Optional[Path] = None,
 ) -> str:
-    """Resolve ``YYYYMMDD`` for summary filenames."""
+    """Resolve ``YYYYMMDD`` for summary filenames.
+
+    Prefers explicit ISO date, then a plausible filename stem, then the archive
+    date folder. Implausible stem years (device default-era) are ignored so
+    notes do not become ``20141006 - ….md``.
+    """
+    folder_dt: Optional[datetime] = None
+    if folder is not None and DATE_FOLDER_RE.match(folder.name):
+        try:
+            folder_dt = datetime.strptime(folder.name, "%Y-%m-%d")
+        except ValueError:
+            folder_dt = None
+
     for candidate in (iso_date,):
         prefix = iso_date_to_prefix(candidate)
-        if prefix:
+        if not prefix:
+            continue
+        try:
+            candidate_dt = datetime.strptime(candidate.strip(), "%Y-%m-%d")
+        except ValueError:
+            return prefix
+        # Trust explicit ISO unless it is absurd vs the archive folder.
+        if folder_dt is None or is_plausible_recording_time(
+            candidate_dt, reference=folder_dt
+        ):
             return prefix
 
     if session_stem:
         parsed = parse_recording_timestamp(Path(session_stem))
         if parsed is not None:
-            return parsed.strftime("%Y%m%d")
+            ref = folder_dt or datetime.now()
+            if is_plausible_recording_time(parsed, reference=ref):
+                return parsed.strftime("%Y%m%d")
 
-    if folder is not None and DATE_FOLDER_RE.match(folder.name):
+    if folder_dt is not None:
         prefix = iso_date_to_prefix(folder.name)
         if prefix:
             return prefix

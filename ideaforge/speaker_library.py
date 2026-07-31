@@ -162,55 +162,138 @@ def _longest_turn_per_speaker(turns: List[SpeakerTurn]) -> Dict[str, SpeakerTurn
     return best
 
 
+# pyannote.audio 4.x: Inference() takes a loaded Model, not a hub id + token.
+# Prefer the public WeSpeaker checkpoint (no extra HF license click); fall back
+# to the classic gated embedding model when available.
+EMBEDDING_MODEL_IDS = (
+    "pyannote/wespeaker-voxceleb-resnet34-LM",
+    "pyannote/embedding",
+)
+GATED_EMBEDDING_HELP = (
+    "https://huggingface.co/pyannote/wespeaker-voxceleb-resnet34-LM "
+    "or https://huggingface.co/pyannote/embedding"
+)
+
+
+class SpeakerEmbeddingError(RuntimeError):
+    """Raised when speaker embedding extraction cannot run."""
+
+
+def _load_embedding_inference(hf_token: str):
+    """
+    Load a pyannote embedding Inference (window=whole).
+
+    Raises SpeakerEmbeddingError with an actionable message on failure.
+    """
+    try:
+        from pyannote.audio import Inference, Model  # type: ignore
+    except ImportError as exc:
+        raise SpeakerEmbeddingError(
+            "pyannote.audio is not installed — pip install -e '.[all]'"
+        ) from exc
+
+    token = (hf_token or "").strip() or None
+    errors: List[str] = []
+    for model_id in EMBEDDING_MODEL_IDS:
+        try:
+            try:
+                model = Model.from_pretrained(model_id, token=token)
+            except TypeError:
+                model = Model.from_pretrained(model_id, use_auth_token=token)
+            if model is None:
+                errors.append(f"{model_id}: from_pretrained returned None")
+                continue
+            # One vector per crop (not a sliding-window feature map).
+            return Inference(model, window="whole")
+        except Exception as exc:
+            errors.append(f"{model_id}: {exc}")
+            continue
+
+    detail = "; ".join(errors) if errors else "unknown error"
+    raise SpeakerEmbeddingError(
+        "Could not load a speaker embedding model. "
+        f"Ensure HF_TOKEN is set and you can access {GATED_EMBEDDING_HELP}. "
+        f"Details: {detail}"
+    )
+
+
 def extract_speaker_embeddings(
     audio_path: Path,
     turns: List[SpeakerTurn],
     hf_token: str,
+    *,
+    strict: bool = False,
 ) -> Dict[str, List[float]]:
     """
-    Extract one embedding per diarization label using pyannote/embedding.
+    Extract one embedding per diarization label from the longest turn each.
 
-    Returns an empty dict when pyannote/torch are unavailable.
+    When ``strict`` is False (pipeline auto-apply path), returns ``{}`` on
+    import/model failures so diarization still completes. When ``strict`` is
+    True (``speakers register``), raises ``SpeakerEmbeddingError``.
     """
     if not turns:
+        if strict:
+            raise SpeakerEmbeddingError("no diarization turns to embed")
         return {}
 
     try:
         import torch  # type: ignore
-        from pyannote.audio import Inference  # type: ignore
-    except ImportError:
+    except ImportError as exc:
+        if strict:
+            raise SpeakerEmbeddingError(
+                "torch is not installed — pip install -e '.[all]'"
+            ) from exc
         return {}
 
     try:
-        inference = Inference("pyannote/embedding", token=hf_token)
-    except TypeError:
-        try:
-            inference = Inference("pyannote/embedding", use_auth_token=hf_token)
-        except Exception:
-            return {}
-    except Exception:
+        inference = _load_embedding_inference(hf_token)
+    except SpeakerEmbeddingError:
+        if strict:
+            raise
         return {}
 
     from ideaforge.audio_util import TARGET_SAMPLE_RATE, load_audio_mono_16k
 
-    audio_np, _ = load_audio_mono_16k(audio_path)
+    try:
+        audio_np, _ = load_audio_mono_16k(audio_path)
+    except Exception as exc:
+        if strict:
+            raise SpeakerEmbeddingError(f"failed to load audio {audio_path}: {exc}") from exc
+        return {}
+
     waveform = torch.from_numpy(audio_np).unsqueeze(0)
     embeddings: Dict[str, List[float]] = {}
+    crop_errors: List[str] = []
 
     for speaker, turn in _longest_turn_per_speaker(turns).items():
         start = max(int(turn.start * TARGET_SAMPLE_RATE), 0)
         end = min(int(turn.end * TARGET_SAMPLE_RATE), audio_np.shape[0])
         if end <= start:
+            crop_errors.append(f"{speaker}: empty crop")
+            continue
+        # WeSpeaker needs a short minimum duration; skip tiny blips.
+        if (end - start) < int(0.25 * TARGET_SAMPLE_RATE):
+            crop_errors.append(f"{speaker}: turn too short ({turn.end - turn.start:.2f}s)")
             continue
         crop = waveform[:, start:end]
         try:
             vector = inference({"waveform": crop, "sample_rate": TARGET_SAMPLE_RATE})
-        except Exception:
+        except Exception as exc:
+            crop_errors.append(f"{speaker}: {exc}")
             continue
         if hasattr(vector, "detach"):
             vector = vector.detach().cpu().numpy()
-        embeddings[speaker] = np.asarray(vector, dtype=np.float32).reshape(-1).tolist()
+        flat = np.asarray(vector, dtype=np.float32).reshape(-1)
+        if flat.size == 0:
+            crop_errors.append(f"{speaker}: empty embedding")
+            continue
+        embeddings[speaker] = flat.tolist()
 
+    if not embeddings and strict:
+        detail = "; ".join(crop_errors) if crop_errors else "no speakers produced embeddings"
+        raise SpeakerEmbeddingError(
+            f"embedding extraction produced no vectors ({detail})"
+        )
     return embeddings
 
 
@@ -282,8 +365,12 @@ def apply_speaker_library(
     if not enabled or not auto_apply:
         return base_map
 
-    embeddings = extract_speaker_embeddings(audio_path, turns, hf_token)
+    embeddings = extract_speaker_embeddings(audio_path, turns, hf_token, strict=False)
     if not embeddings:
+        print(
+            "    ⚠ Speaker library: no embeddings extracted "
+            "(check HF_TOKEN / embedding model access — ideaforge speakers register …)"
+        )
         return base_map
 
     library = load_speaker_library(library_path)
@@ -382,7 +469,9 @@ def register_speaker_from_session(
     if not hf_token:
         raise RuntimeError("HF_TOKEN required for speaker embedding extraction")
 
-    embeddings = extract_speaker_embeddings(audio_candidates[0], turns, hf_token)
+    embeddings = extract_speaker_embeddings(
+        audio_candidates[0], turns, hf_token, strict=True
+    )
     embedding = embeddings.get(speaker_label)
     if embedding is None:
         labels = ", ".join(sorted(embeddings.keys())) or "(none)"

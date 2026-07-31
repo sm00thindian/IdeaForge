@@ -4,6 +4,13 @@ All notable changes to IdeaForge are documented here. Format follows [Keep a Cha
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-07-31
+
+### Fixed
+
+- **Implausible recording dates** — Skip factory-default / battery-reset timestamps (e.g. filename year 2014) when resolving archive folders and note dates; prefer enclosing `YYYY-MM-DD` archive folder (re-anchoring time-of-day), then mtime, then system time (`session_time.py`). Friendly note filenames no longer become `20141006 - ….md`.
+- **Speaker library embeddings** — `speakers register` / auto-apply was silently returning no vectors on pyannote.audio 4.x (`Inference` no longer accepts a hub id + token). Load via `Model.from_pretrained` + `Inference(..., window="whole")`, prefer public `pyannote/wespeaker-voxceleb-resnet34-LM`, and surface clear errors instead of `(none)`.
+
 ## [1.3.1] - 2026-07-31
 
 ### Added
@@ -247,6 +254,7 @@ All notable changes to IdeaForge are documented here. Format follows [Keep a Cha
 
 Prior releases were not changelogged in-repo. See git history for daemon, Grok/Claude/Ollama backends, faster-whisper + pyannote diarization, and USB ingest.
 
+[1.4.0]: https://github.com/sm00thindian/IdeaForge/releases/tag/v1.4.0
 [1.3.1]: https://github.com/sm00thindian/IdeaForge/releases/tag/v1.3.1
 [1.3.0]: https://github.com/sm00thindian/IdeaForge/releases/tag/v1.3.0
 [1.2.1]: https://github.com/sm00thindian/IdeaForge/releases/tag/v1.2.1

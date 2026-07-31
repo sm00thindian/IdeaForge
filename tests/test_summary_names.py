@@ -54,6 +54,31 @@ def test_date_prefix_from_session_stem():
     )
 
 
+def test_date_prefix_skips_implausible_stem_uses_folder(tmp_path: Path):
+    folder = tmp_path / "2026-07-31"
+    folder.mkdir()
+    assert (
+        date_prefix_for_session(
+            session_stem="V2014-10-06-07-44-57",
+            folder=folder,
+        )
+        == "20260731"
+    )
+
+
+def test_date_prefix_skips_implausible_iso_when_folder_present(tmp_path: Path):
+    folder = tmp_path / "2026-07-31"
+    folder.mkdir()
+    assert (
+        date_prefix_for_session(
+            iso_date="2014-10-06",
+            session_stem="V2014-10-06-07-44-57",
+            folder=folder,
+        )
+        == "20260731"
+    )
+
+
 def test_friendly_summary_md_filename_format():
     name = friendly_summary_md_filename(
         date_prefix="20260630",
