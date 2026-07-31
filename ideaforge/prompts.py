@@ -63,24 +63,40 @@ rationalization, cATO, dual-path delivery, FedRAMP/ATO) when the conversation us
 # Back-compat alias (general base without forced Fed framing).
 MEETING_SYSTEM = MEETING_SYSTEM_BASE
 
+MEETING_TYPE_GUIDANCE = """\
+Meeting-type guidance (set meeting_type, then bias extraction):
+- standup: Round-robin status, blockers, short actions. Rarely formal multi-party decisions — \
+prefer empty decisions and put open items in open_questions/follow_ups.
+- 1:1: Coaching or alignment between two people. Few formal decisions; capture commitments clearly.
+- voice_memo: Solo speaker. meeting_type=voice_memo; attendees empty or the speaker only; still \
+extract self-tasks and decisions if any.
+- planning / review / sync: Full structure — decisions, actions, risks, discussion topics.
+- interview / brainstorm / other: Match the tone; do not invent a formal agenda that was not spoken.
+- Always choose the best-fit meeting_type from: \
+sync|planning|1:1|brainstorm|standup|review|interview|voice_memo|other."""
+
 MEETING_USER_TEMPLATE = """Analyze this voice or meeting transcript and produce structured meeting \
-minutes suitable for forwarding to managers, leadership, or cross-boundary stakeholders.
+minutes suitable for forwarding to attendees and stakeholders.
+
+{recording_context}
 
 Speaker labels detected: {speaker_context}
+
+{meeting_type_guidance}
 
 Return a JSON object with exactly these keys:
 {{
   "title": "clear, descriptive meeting title (not generic like 'Meeting Notes')",
-  "date": "YYYY-MM-DD if inferable from content or context, else empty string",
+  "date": "YYYY-MM-DD: prefer recording date below when no other meeting date is stated; else empty string",
   "time": "meeting time if mentioned, else empty string",
-  "platform": "Zoom, Teams, in-person, etc. if mentioned, else empty string",
+  "platform": "Zoom, Teams, in-person, phone, etc. if mentioned, else empty string",
   "attendees": "comma-separated names and roles if identifiable; else empty string",
   "meeting_type": "sync|planning|1:1|brainstorm|standup|review|interview|voice_memo|other",
   "executive_summary": "2-4 sentences: purpose, most important outcomes/decisions; for someone who did not attend",
   "discussion_topics": [
     {{
       "title": "logical topic or theme discussed",
-      "points": ["concise bullets with technical details, tradeoffs, risks, blockers, or implications"]
+      "points": ["concise bullets: facts, tradeoffs, risks, blockers, or implications"]
     }}
   ],
   "topics": ["flat list of main agenda topics, in order — legacy fallback"],
@@ -96,16 +112,16 @@ Return a JSON object with exactly these keys:
     {{
       "speaker": "inferred name or role",
       "summary": "what this person contributed",
-      "key_quotes": ["verbatim quotes max 2, if useful"]
+      "key_quotes": ["at most 2 short verbatim quotes, only if distinctive"]
     }}
   ],
   "key_points": ["substantive points if not captured in discussion_topics"],
   "action_items": [
     {{
-      "who": "full name or role — from speaker_identities when confident",
-      "what": "specific, verb-led, actionable description",
-      "when": "due date, timeframe ('End of week', 'By Aug 2026 pre-prod'), 'TBD', or 'As discussed'",
-      "notes": "context, dependencies, related artifact (e.g., 'Supports OAL dual-path delivery for FedNow boundary')",
+      "who": "full name or role — from speaker_identities when confident; never SPEAKER_XX if a name/role is known",
+      "what": "one clear verb-led sentence",
+      "when": "prefer ISO YYYY-MM-DD when resolvable from recording date + relative speech; else short phrase, 'TBD', or 'As discussed'",
+      "notes": "brief context/deps only (e.g. '{action_notes_example}')",
       "status": "Open",
       "priority": "high|medium|low",
       "confidence": "explicit|inferred",
@@ -125,32 +141,75 @@ Return a JSON object with exactly these keys:
     {{
       "topic": "topic to revisit",
       "owner": "inferred name when known",
-      "by_when": "timing if mentioned, else null",
+      "by_when": "ISO date when resolvable, else timing phrase or null",
       "context": "why follow-up is needed"
     }}
   ],
-  "risks_blockers": ["risks, blockers, compliance/timeline implications raised in discussion"],
+  "risks_blockers": ["risks, blockers, or timeline implications raised in discussion"],
   "preparation_notes": [
-    "uncertainties, low-confidence extractions, or assumptions (e.g., '[Unclear in transcript: timeline for Zacta integration]')",
-    "references to specific documents, issues, diagrams, or artifacts mentioned"
+    "uncertainties or assumptions (e.g. '{prep_notes_example}')",
+    "documents, tickets, or artifacts mentioned by name"
   ]
 }}
 
 Extraction rules:
-1. action_items: capture every commitment, offer, and request. Sort soonest due date first when \
-possible. Default status to "Open". Use notes for artifact/issue references (Issue 244, C4, Risk Sentinel).
-2. decisions: consensus or clear approval only — not proposals still debated.
-3. discussion_topics: create logical sections even if conversation was unstructured; prefer this over \
-a flat key_points list.
-4. executive_summary: maximum 4 sentences.
-5. preparation_notes: flag anything unclear, assumed, or needing author verification — never hide \
-uncertainty in the main sections.
+1. action_items: capture every commitment, offer, and request. Sort soonest due first when possible. \
+Default status to "Open". {artifact_rule}
+2. decisions: consensus or clear approval only — not proposals still debated. Empty array is fine.
+3. discussion_topics: logical sections even if conversation was unstructured; prefer over flat key_points.
+4. executive_summary: maximum 4 sentences; no SPEAKER_XX labels.
+5. preparation_notes: flag unclear or assumed items — never hide uncertainty in main sections.
 6. attendees: synthesize from speaker_identities and introductions when possible.
 7. If no action items exist, return an empty action_items array.
-8. Solo voice memos: set meeting_type to "voice_memo" but still extract tasks and decisions.
+8. Dates: when a recording date is provided above, resolve "today/tomorrow/next week/Wednesday" \
+to YYYY-MM-DD in action_items.when and follow_ups.by_when when unambiguous; if ambiguous, keep \
+the spoken phrase and note uncertainty in preparation_notes.
+9. Apply meeting-type guidance above after choosing meeting_type.
 
 Transcript:
 {transcript}"""
+
+
+def meeting_domain_examples(domain: str) -> Dict[str, str]:
+    """Neutral vs domain-flavored examples for the user template."""
+    if (domain or "general").strip().lower() == "fed_grc":
+        return {
+            "action_notes_example": "Depends on design review; related ticket or control ID if named",
+            "prep_notes_example": "[Unclear in transcript: timeline for tool integration]",
+            "artifact_rule": (
+                "Use notes for tickets, control IDs, or systems named in the transcript "
+                "(do not invent OSCAL/Fed artifacts)."
+            ),
+        }
+    return {
+        "action_notes_example": "Depends on design review; blocks release checklist",
+        "prep_notes_example": "[Unclear in transcript: exact deadline for the rollout]",
+        "artifact_rule": (
+            "Use notes for ticket IDs, docs, or systems mentioned — do not invent references."
+        ),
+    }
+
+
+def format_recording_context(
+    *,
+    recording_date: Optional[str] = None,
+    recording_date_source: Optional[str] = None,
+) -> str:
+    """Human + model context for anchoring relative dates."""
+    date = (recording_date or "").strip()
+    if not date:
+        return (
+            "Recording context: no authoritative recording date is available. "
+            "Keep relative timeframes as spoken; leave JSON date empty if unknown."
+        )
+    source = (recording_date_source or "archive").strip()
+    return (
+        f"Recording context: authoritative recording date is {date} "
+        f"(source: {source}). Prefer this for the JSON date field when the transcript "
+        "does not state a different meeting date. Resolve relative due dates "
+        f"(tomorrow, next Wednesday, end of week) to ISO YYYY-MM-DD relative to {date} "
+        "when unambiguous."
+    )
 
 SONG_IDEA_SYSTEM = """You are an expert lyricist and AI-music prompt engineer. You transform \
 spoken song ideas into mature, performance-ready lyrics and copy-ready prompts for Suno v5.5 and Udio.
@@ -352,6 +411,8 @@ def build_prompt(
     udio_style: Optional["CreativePlatformStyle"] = None,
     creative_settings: Optional["CreativeSettings"] = None,
     meeting_domain: str = "general",
+    recording_date: Optional[str] = None,
+    recording_date_source: Optional[str] = None,
 ) -> tuple[str, str]:
     """Return (system_prompt, user_prompt) for the given mode."""
     clipped = transcript[:max_chars]
@@ -373,8 +434,17 @@ def build_prompt(
             if transcript_has_speaker_labels(clipped)
             else "no — speakers are not labeled; use roles or 'Unattributed' where needed"
         )
+        examples = meeting_domain_examples(meeting_domain)
         return build_meeting_system_prompt(meeting_domain), MEETING_USER_TEMPLATE.format(
             transcript=clipped,
             speaker_context=speaker_context,
+            recording_context=format_recording_context(
+                recording_date=recording_date,
+                recording_date_source=recording_date_source,
+            ),
+            meeting_type_guidance=MEETING_TYPE_GUIDANCE,
+            action_notes_example=examples["action_notes_example"],
+            prep_notes_example=examples["prep_notes_example"],
+            artifact_rule=examples["artifact_rule"],
         )
     return AUTO_SYSTEM, AUTO_USER_TEMPLATE.format(transcript=clipped)

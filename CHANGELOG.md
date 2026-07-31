@@ -11,6 +11,7 @@ All notable changes to IdeaForge are documented here. Format follows [Keep a Cha
 ### Changed
 
 - **Mature meeting markdown (Layer A)** — Exec skim order (snapshot → decisions → actions → risks → discussion); omit empty TBD headers; Participants table; SPEAKER_xx remapped to names; slim action table (no source quotes); footer metadata instead of header clutter.
+- **Mature meeting prompts** — Neutral user-template examples for `meeting_domain=general`; recording date injected to resolve relative dues to ISO; meeting-type guidance (standup / 1:1 / voice_memo / planning).
 
 ### Fixed
 

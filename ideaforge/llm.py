@@ -154,6 +154,8 @@ def process_transcript(
         clear_progress=True,
         detail=f"{resolved_backend} · {transcript_path.stem}",
     )
+    rec_date = recording_time.iso_date if recording_time is not None else None
+    rec_src = recording_time.source if recording_time is not None else None
     system_prompt, user_prompt = build_prompt(
         "creative" if effective_mode == "creative" else "meeting",
         transcript,
@@ -162,6 +164,8 @@ def process_transcript(
         udio_style=udio_style,
         creative_settings=creative_settings,
         meeting_domain=meeting_domain,
+        recording_date=rec_date,
+        recording_date_source=rec_src,
     )
 
     models = {
