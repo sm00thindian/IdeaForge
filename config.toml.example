@@ -75,6 +75,8 @@ language = "en"          # force English (omit for auto-detect)
 [processing]
 mode = "auto"            # meeting | creative | auto (auto = meeting unless keyword trigger)
 meeting_domain = "auto"     # auto (detect) | general | fed_grc
+# Optional extra glossary for fed_grc pack (your systems / tools / programs):
+# meeting_domain_terms = ["FedNow", "Telos", "CMCA", "OAL", "your system name"]
 output_format = "both"   # md | json | both
 diarize = false
 min_file_size_bytes = 50000

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Sequence
 
 if TYPE_CHECKING:
     from ideaforge.config import CreativePlatformStyle, CreativeSettings
@@ -49,19 +49,70 @@ open_questions, not decisions.
 Output valid JSON only — no markdown fences, no commentary before or after the JSON."""
 
 # Optional domain packs appended to the base system prompt.
+# fed_grc is a structured playbook; glossary terms can be injected at runtime.
 MEETING_DOMAIN_PACKS: Dict[str, str] = {
     "general": "",
     "fed_grc": """
-Domain pack — federal GRC / compliance (apply only when relevant to the transcript):
-- Prefer correct terminology for OSCAL artifacts (SSP, POA&M, SAP, SAR, CDEF, etc.), tools \
-(Xacta/Zacta/IO, Spark, InSpec, Databricks, CAR), and processes (inheritance, boundary \
-rationalization, cATO, dual-path delivery, FedRAMP/ATO) when the conversation uses them.
-- Do not invent compliance frameworks or artifacts that are not in the transcript.
+Domain pack — federal GRC / compliance / systems architecture
+(When this pack is active, use it for terminology, structure, and extraction emphasis.
+Still never invent controls, packages, or dates not in the transcript.)
+
+1) Terminology (prefer correct forms when speakers use them or clear synonyms):
+- Authorization: ATO, continuous authorization (cATO), authorization boundary, inheritance,
+  dual-path delivery, FedRAMP, FISMA, NIST (e.g. 800-53), OMB.
+- OSCAL artifacts: SSP, POA&M (POAM), SAP, SAR, component definition (CDEF), profiles, catalogs.
+- GRC / assessment tools (as named in speech): Xacta/Zacta, IO, InSpec, Databricks, CAR, RegScale,
+  SAT, Spark, and any org-specific tools listed under "Org glossary" below.
+- Ownership roles when stated: system owner, ISSO, assessor, 3PAO, authorizing official (AO),
+  architecture, operations/vuln management, GRC, program lead.
+
+2) Meaning structure (organize discussion when the conversation uses these concepts):
+- Separate boundary / component / inherited vs common control responsibility when discussed.
+- Distinguish assessment findings/observations from POA&M items and from operational risks.
+- Distinguish package/ATO status (draft, in review, submitted, continuous) from day-to-day ops.
+- Capture RACI / ownership disputes (who owns compliance tool lists vs operational tooling) as
+  decisions only if clearly settled; otherwise open_questions or risks_blockers.
+
+3) Extraction emphasis:
+- action_items: verb-led; put control IDs, package names, ticket IDs, and tool names in notes
+  when spoken. Flag ATO/package timeline commitments as priority high when urgency is clear.
+- decisions: formal agreement on scope, ownership, path (e.g. dual-path), or package direction —
+  not exploratory architecture debate.
+- risks_blockers: inheritance gaps, package delays, tool ownership conflicts, audit/assessment
+  windows, staffing or RACI churn.
+- preparation_notes: ASR garbling of product names (e.g. Xacta/Zacta/Oskall), uncertain control
+  IDs, or unclear package dates.
+
+4) Anti-hallucination (strict):
+- Do not invent control IDs, inheritance maps, FedRAMP baselines, or ATO dates.
+- Do not assume a Federal Reserve or agency context unless the transcript supports it.
+- If a term is ambiguous (e.g. "SAT", "IO", "boundary"), use the speaker's wording and note
+  ambiguity in preparation_notes rather than expanding into a full framework story.
+
+5) Org glossary (use exact names when present in the transcript; do not invent):
+{org_glossary}
 """,
 }
 
 # Back-compat alias (general base without forced Fed framing).
 MEETING_SYSTEM = MEETING_SYSTEM_BASE
+
+DEFAULT_FED_GRC_GLOSSARY = [
+    "Federal Reserve",
+    "FedNow",
+    "Telos",
+    "Xacta / Zacta",
+    "OSCAL",
+    "FedRAMP",
+    "ATO / cATO",
+    "SSP",
+    "POA&M",
+    "SAT",
+    "CMCA",
+    "OAL",
+    "dual-path delivery",
+    "authorization boundary",
+]
 
 MEETING_TYPE_GUIDANCE = """\
 Meeting-type guidance (set meeting_type, then bias extraction):
@@ -174,11 +225,15 @@ def meeting_domain_examples(domain: str) -> Dict[str, str]:
     """Neutral vs domain-flavored examples for the user template."""
     if (domain or "general").strip().lower() == "fed_grc":
         return {
-            "action_notes_example": "Depends on design review; related ticket or control ID if named",
-            "prep_notes_example": "[Unclear in transcript: timeline for tool integration]",
+            "action_notes_example": (
+                "Supports SSP update; control AC-2 if named; blocked by inheritance decision"
+            ),
+            "prep_notes_example": (
+                "[Unclear in transcript: whether POA&M due date was calendar or package gate]"
+            ),
             "artifact_rule": (
-                "Use notes for tickets, control IDs, or systems named in the transcript "
-                "(do not invent OSCAL/Fed artifacts)."
+                "Use notes for tickets, control IDs, OSCAL artifacts, tools (Xacta/IO/SAT), "
+                "and package milestones named in the transcript — never invent them."
             ),
         }
     return {
@@ -188,6 +243,14 @@ def meeting_domain_examples(domain: str) -> Dict[str, str]:
             "Use notes for ticket IDs, docs, or systems mentioned — do not invent references."
         ),
     }
+
+
+def format_org_glossary(terms: Optional[Sequence[str]] = None) -> str:
+    """Bullet list for the fed_grc pack glossary section."""
+    items = [str(t).strip() for t in (terms or []) if t and str(t).strip()]
+    if not items:
+        items = list(DEFAULT_FED_GRC_GLOSSARY)
+    return "\n".join(f"- {item}" for item in items)
 
 
 def format_recording_context(
@@ -392,13 +455,25 @@ def build_lyric_polish_prompt(
     )
 
 
-def build_meeting_system_prompt(domain: str = "general") -> str:
+def build_meeting_system_prompt(
+    domain: str = "general",
+    *,
+    org_glossary: Optional[Sequence[str]] = None,
+) -> str:
     """Base meeting scribe prompt plus optional domain pack."""
     key = (domain or "general").strip().lower()
     pack = MEETING_DOMAIN_PACKS.get(key, MEETING_DOMAIN_PACKS["general"])
-    if pack.strip():
-        return MEETING_SYSTEM_BASE.rstrip() + "\n" + pack.strip() + "\n"
-    return MEETING_SYSTEM_BASE
+    if not pack.strip():
+        return MEETING_SYSTEM_BASE
+    if "{org_glossary}" in pack:
+        pack = pack.format(org_glossary=format_org_glossary(org_glossary))
+    # When a domain pack is active, allow specialized framing for that domain only.
+    base = MEETING_SYSTEM_BASE.replace(
+        "- Do not force a specialized industry frame unless the transcript clearly uses that domain.",
+        "- A domain pack is active below: use it for terminology and structure when the transcript "
+        "supports it; still never invent domain facts not spoken.",
+    )
+    return base.rstrip() + "\n" + pack.strip() + "\n"
 
 
 def build_prompt(
@@ -411,6 +486,7 @@ def build_prompt(
     udio_style: Optional["CreativePlatformStyle"] = None,
     creative_settings: Optional["CreativeSettings"] = None,
     meeting_domain: str = "general",
+    meeting_domain_terms: Optional[Sequence[str]] = None,
     recording_date: Optional[str] = None,
     recording_date_source: Optional[str] = None,
 ) -> tuple[str, str]:
@@ -435,7 +511,11 @@ def build_prompt(
             else "no — speakers are not labeled; use roles or 'Unattributed' where needed"
         )
         examples = meeting_domain_examples(meeting_domain)
-        return build_meeting_system_prompt(meeting_domain), MEETING_USER_TEMPLATE.format(
+        system = build_meeting_system_prompt(
+            meeting_domain,
+            org_glossary=meeting_domain_terms,
+        )
+        return system, MEETING_USER_TEMPLATE.format(
             transcript=clipped,
             speaker_context=speaker_context,
             recording_context=format_recording_context(

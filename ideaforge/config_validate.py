@@ -57,6 +57,7 @@ SECTION_KEYS: Dict[str, Set[str]] = {
     "processing": {
         "mode",
         "meeting_domain",
+        "meeting_domain_terms",
         "output_format",
         "diarize",
         "min_file_size_bytes",

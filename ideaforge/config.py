@@ -142,6 +142,8 @@ class IdeaForgeConfig:
     mode: str = "meeting"
     # Meeting prompt domain pack: auto (detect) | general | fed_grc
     meeting_domain: str = "auto"
+    # Extra org/tool terms injected into the fed_grc glossary (optional).
+    meeting_domain_terms: List[str] = field(default_factory=list)
     output_format: str = "both"  # md | json | both
     diarize: bool = False
     min_speakers: Optional[int] = None
@@ -261,7 +263,15 @@ class IdeaForgeConfig:
             p = data["processing"]
             cfg.mode = p.get("mode", cfg.mode)
             if "meeting_domain" in p:
-                cfg.meeting_domain = str(p["meeting_domain"]).strip().lower() or "general"
+                cfg.meeting_domain = str(p["meeting_domain"]).strip().lower() or "auto"
+            if "meeting_domain_terms" in p:
+                raw_terms = p["meeting_domain_terms"]
+                if isinstance(raw_terms, list):
+                    cfg.meeting_domain_terms = [
+                        str(t).strip() for t in raw_terms if str(t).strip()
+                    ]
+                elif raw_terms:
+                    cfg.meeting_domain_terms = [str(raw_terms).strip()]
             cfg.output_format = p.get("output_format", cfg.output_format)
             cfg.diarize = p.get("diarize", cfg.diarize)
             cfg.min_file_size_bytes = p.get("min_file_size_bytes", cfg.min_file_size_bytes)

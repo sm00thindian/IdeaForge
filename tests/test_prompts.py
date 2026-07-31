@@ -39,7 +39,17 @@ def test_meeting_domain_fed_grc_pack():
         meeting_domain="fed_grc",
     )
     assert "OSCAL" in system
+    assert "authorization boundary" in system.lower() or "Authorization" in system
+    assert "Anti-hallucination" in system or "never invent" in system.lower()
+    assert "POA&M" in system or "POAM" in system
     assert "meeting scribe" in system.lower() or "executive assistant" in system.lower()
+    # Custom glossary terms appear
+    system2 = build_meeting_system_prompt(
+        "fed_grc",
+        org_glossary=["FedNow", "CustomSystemX"],
+    )
+    assert "FedNow" in system2
+    assert "CustomSystemX" in system2
 
 
 def test_meeting_prompt_without_speakers():
@@ -61,7 +71,7 @@ def test_general_examples_are_neutral():
 
 def test_fed_grc_examples_mention_domain_carefully():
     examples = meeting_domain_examples("fed_grc")
-    assert "control" in examples["action_notes_example"].lower() or "ticket" in examples[
+    assert "control" in examples["action_notes_example"].lower() or "ssp" in examples[
         "action_notes_example"
     ].lower()
     _, user = build_prompt(
@@ -69,7 +79,7 @@ def test_fed_grc_examples_mention_domain_carefully():
         "We discussed the SSP.",
         meeting_domain="fed_grc",
     )
-    assert "do not invent OSCAL" in user.lower() or "OSCAL" in user
+    assert "never invent" in user.lower() or "do not invent" in user.lower()
 
 
 def test_recording_date_injected_for_relative_resolution():

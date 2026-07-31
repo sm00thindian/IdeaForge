@@ -86,7 +86,14 @@ meeting_domain = "auto"      # detect from transcript (default)
 
 With ``auto``, IdeaForge starts from the general pack and switches to **fed_grc** when the
 transcript mentions Federal Reserve / FedRAMP / OSCAL / GRC / governance / systems architecture
-language.
+language. The **fed_grc** pack is a full playbook (artifacts, lifecycle, ownership, anti-hallucination)
+plus an optional org glossary:
+
+```toml
+[processing]
+meeting_domain = "auto"
+meeting_domain_terms = ["FedNow", "Telos", "CMCA", "OAL"]
+```
 
 ### Song idea mode
 

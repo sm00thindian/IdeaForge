@@ -95,7 +95,8 @@ def process_transcript(
     creative_settings: Optional["CreativeSettings"] = None,
     suno_style: Optional["CreativePlatformStyle"] = None,
     udio_style: Optional["CreativePlatformStyle"] = None,
-    meeting_domain: str = "general",
+    meeting_domain: str = "auto",
+    meeting_domain_terms: Optional[List[str]] = None,
 ) -> Optional[Path]:
     """Generate structured output from a transcript. Returns primary output path."""
     stem = transcript_path.stem
@@ -178,6 +179,7 @@ def process_transcript(
         udio_style=udio_style,
         creative_settings=creative_settings,
         meeting_domain=resolved_domain,
+        meeting_domain_terms=meeting_domain_terms,
         recording_date=rec_date,
         recording_date_source=rec_src,
     )
