@@ -17,10 +17,7 @@ def transcript_has_speaker_labels(transcript: str) -> bool:
     return bool(SPEAKER_LABEL_PATTERN.search(transcript))
 
 
-MEETING_SYSTEM = """You are an expert professional meeting scribe and technical executive assistant \
-with deep domain expertise in cybersecurity compliance, OSCAL implementations, GRC automation, \
-FedRAMP/ATO processes, continuous authorization (cATO), and technical architecture work within \
-federal financial institutions such as the Federal Reserve.
+MEETING_SYSTEM_BASE = """You are an expert professional meeting scribe and executive assistant.
 
 Your job is to convert raw, often messy meeting transcripts into concise, professional, \
 well-structured meeting minutes that are immediately useful for distribution to attendees and \
@@ -32,24 +29,39 @@ Core rules:
 items, dates, or details. If something is unclear or missing, note it in preparation_notes.
 - Remove filler words ("um", "like", "you know"), repetitions, and tangents while preserving \
 original meaning and technical accuracy.
-- Use correct terminology for OSCAL artifacts (SSP, POA&M, SAP, SAR, CDEF, etc.), tools \
-(Xacta/Zacta/IO, Spark, InSpec, Databricks, CAR), processes (inheritance, boundary \
-rationalization, cATO, dual-path delivery), and timelines.
 - Attribute actions and key points to specific people when speaker labels or names are present.
-- Make action items specific, verb-led, and owner-assigned. If a due date or timeframe is \
-mentioned or reasonably inferable, include it. Otherwise use "TBD" or "As discussed".
+- Make action items specific, verb-led, and owner-assigned. Keep "what" to one clear sentence; \
+put detail in notes (not monologues). If a due date or timeframe is mentioned or reasonably \
+inferable, include it. Otherwise use "TBD" or "As discussed".
 - Organize free-flowing conversation into logical discussion_topics sections even if the meeting \
 jumped around.
 - When speaker labels ([SPEAKER_00], Kilynn:, Meredith:, etc.) are present, infer real names or \
 roles from conversation evidence. Populate speaker_identities and use inferred names in \
-action_items.who, decisions.made_by, and follow_ups.owner — never raw SPEAKER_XX when a \
-medium- or high-confidence identity exists.
+action_items.who, decisions.made_by, follow_ups.owner, and executive_summary — never raw \
+SPEAKER_XX when a medium- or high-confidence identity exists. If identity is unknown, use a \
+stable role label (e.g. "Unidentified participant") not SPEAKER_XX in narrative fields.
 - Distinguish firm decisions from proposals still under debate. Tag unresolved proposals as \
 open_questions, not decisions.
 - Keep the overall document concise yet complete. Executives should read it in under 3 minutes.
 - Use professional, neutral, objective language. Active voice for action items.
+- Do not force a specialized industry frame unless the transcript clearly uses that domain.
 
 Output valid JSON only — no markdown fences, no commentary before or after the JSON."""
+
+# Optional domain packs appended to the base system prompt.
+MEETING_DOMAIN_PACKS: Dict[str, str] = {
+    "general": "",
+    "fed_grc": """
+Domain pack — federal GRC / compliance (apply only when relevant to the transcript):
+- Prefer correct terminology for OSCAL artifacts (SSP, POA&M, SAP, SAR, CDEF, etc.), tools \
+(Xacta/Zacta/IO, Spark, InSpec, Databricks, CAR), and processes (inheritance, boundary \
+rationalization, cATO, dual-path delivery, FedRAMP/ATO) when the conversation uses them.
+- Do not invent compliance frameworks or artifacts that are not in the transcript.
+""",
+}
+
+# Back-compat alias (general base without forced Fed framing).
+MEETING_SYSTEM = MEETING_SYSTEM_BASE
 
 MEETING_USER_TEMPLATE = """Analyze this voice or meeting transcript and produce structured meeting \
 minutes suitable for forwarding to managers, leadership, or cross-boundary stakeholders.
@@ -321,6 +333,15 @@ def build_lyric_polish_prompt(
     )
 
 
+def build_meeting_system_prompt(domain: str = "general") -> str:
+    """Base meeting scribe prompt plus optional domain pack."""
+    key = (domain or "general").strip().lower()
+    pack = MEETING_DOMAIN_PACKS.get(key, MEETING_DOMAIN_PACKS["general"])
+    if pack.strip():
+        return MEETING_SYSTEM_BASE.rstrip() + "\n" + pack.strip() + "\n"
+    return MEETING_SYSTEM_BASE
+
+
 def build_prompt(
     mode: Mode,
     transcript: str,
@@ -330,6 +351,7 @@ def build_prompt(
     suno_style: Optional["CreativePlatformStyle"] = None,
     udio_style: Optional["CreativePlatformStyle"] = None,
     creative_settings: Optional["CreativeSettings"] = None,
+    meeting_domain: str = "general",
 ) -> tuple[str, str]:
     """Return (system_prompt, user_prompt) for the given mode."""
     clipped = transcript[:max_chars]
@@ -351,7 +373,7 @@ def build_prompt(
             if transcript_has_speaker_labels(clipped)
             else "no — speakers are not labeled; use roles or 'Unattributed' where needed"
         )
-        return MEETING_SYSTEM, MEETING_USER_TEMPLATE.format(
+        return build_meeting_system_prompt(meeting_domain), MEETING_USER_TEMPLATE.format(
             transcript=clipped,
             speaker_context=speaker_context,
         )

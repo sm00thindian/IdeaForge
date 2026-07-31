@@ -74,6 +74,7 @@ language = "en"          # force English (omit for auto-detect)
 
 [processing]
 mode = "auto"            # meeting | creative | auto (auto = meeting unless keyword trigger)
+meeting_domain = "general"  # general | fed_grc (domain pack for meeting prompts)
 output_format = "both"   # md | json | both
 diarize = false
 min_file_size_bytes = 50000
@@ -104,7 +105,7 @@ temperature = 0.6              # LLM temperature for song-idea mode (meetings us
 style_merge = "merge"          # merge | memo_wins | pick_first | pick_random
 target_duration_minutes = 4.5  # aim for 4–5 minute Suno/Udio song length
 rhyme_scheme = "mixed"         # abab | aabb | mixed (per-section)
-multi_pass = false             # second LLM polish pass (extra cost; opt-in)
+multi_pass = true              # second LLM polish pass (extra cost; set false to skip)
 chorus_variant_count = 3       # alternate hooks in addition to chorus_hook (0 = off)
 
 [creative.suno]

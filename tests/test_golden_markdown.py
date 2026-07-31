@@ -51,6 +51,9 @@ def test_meeting_notes_golden_markdown():
         metadata={
             "recording_date": "2026-06-27",
             "recording_date_source": "filename",
+            "session_stem": "R2026-06-27-10-00-00",
+            "llm_backend": "grok",
+            "llm_model": "grok-4.3",
         },
     )
     expected = (GOLDENS / "meeting_notes.md").read_text(encoding="utf-8")

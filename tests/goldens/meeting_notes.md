@@ -1,45 +1,45 @@
 ---
 date: 2026-06-27
-recording_date_source: filename
 ---
 
-# Meeting Minutes: Sprint Planning
+# Planning · Sprint Planning
 
 **Date:** 2026-06-27
 **Time:** 10:00 AM ET
 **Platform:** Zoom
 **Attendees:** Alex (Engineering), Jordan (PM)
-**Recording date source:** filename
 
-## Executive Summary
+## Snapshot
 
 Team aligned on Q3 priorities.
 
-## Action Items
-
-| # | Action Item | Owner | Due Date / Timeframe | Notes / Context / Dependencies | Status |
-|---|-------------|-------|----------------------|--------------------------------|--------|
-| 1 | Update roadmap | Alex | Friday | Supports Q3 release planning | Open |
-
-## Key Decisions
+## Decisions
 
 - Delay launch to August (Backend not ready)
 
-## Discussion Summary
+## Action items
+
+| # | Action | Owner | Due | P | Context |
+|---|--------|-------|-----|---|---------|
+| 1 | Update roadmap | Alex | Friday | — | Supports Q3 release planning |
+
+## Risks & blockers
+
+- Hiring delay on backend team
+
+## Discussion
 
 ### Timeline
 - Backend refactor is priority
 
-## Open Questions / Parking Lot Items
+## Open questions
 
 - Capacity planning (Alex) — by next sync
 
-### Risks, Blockers, and Implications
-
-- Hiring delay on backend team
-
-## Preparation Notes (for the minutes author)
+## Notes for author
 
 - [Unclear in transcript: exact launch date]
 
-**End of Minutes**
+---
+
+Recording date: 2026-06-27 (filename) · Session: R2026-06-27-10-00-00 · Model: grok · grok-4.3

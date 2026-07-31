@@ -117,15 +117,56 @@ def regenerate_creative(
         except (OSError, json.JSONDecodeError, TypeError):
             pass
 
+    md_path = Path(md) if not isinstance(md, Path) else md
     sidecars = creative_sidecar_paths(output_dir, session_stem)
     extra = []
     for name, path in sidecars.items():
         if path.is_file():
             extra.append(path.name)
-    msg = f"Regenerated {md.name}"
+
+    # Update menubar last-notes (runner does this for full pipeline; regenerate skips runner).
+    try:
+        from ideaforge.last_notes import LastNote, save_last_notes
+        from ideaforge.notify import RecordingResult
+        from ideaforge.status import record_last_notes_from_recordings
+
+        title = session_stem
+        if paths["summary_json"].is_file():
+            try:
+                data = json.loads(paths["summary_json"].read_text(encoding="utf-8"))
+                title = str(data.get("title") or title)
+            except (OSError, json.JSONDecodeError, TypeError):
+                pass
+        suno = sidecars.get("suno")
+        udio = sidecars.get("udio")
+        brief = RecordingResult(
+            stem=session_stem,
+            title=title,
+            output_intent="song_idea",
+            summary_md=str(md_path.resolve()) if md_path.is_file() else None,
+        )
+        recorded = record_last_notes_from_recordings([brief])
+        if not recorded and md_path.is_file():
+            # Direct write if RecordingResult path filtered (e.g. empty flag edge cases)
+            save_last_notes(
+                [
+                    LastNote(
+                        path=str(md_path.resolve()),
+                        title=title,
+                        output_intent="song_idea",
+                        stem=session_stem,
+                        suno_path=str(suno.resolve()) if suno and suno.is_file() else None,
+                        udio_path=str(udio.resolve()) if udio and udio.is_file() else None,
+                    ).with_resolved_sidecars()
+                ]
+            )
+    except Exception as exc:
+        print(f"   ⚠️  Could not update last-notes menu: {exc}")
+
+    msg = f"Regenerated {md_path.name}"
     if extra:
         msg += f" (+ {', '.join(extra)})"
-    return 0, Path(md) if not isinstance(md, Path) else md, msg
+    return 0, md_path, msg
 
 
 def list_sidecars_for_note_path(

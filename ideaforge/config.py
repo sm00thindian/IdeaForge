@@ -109,8 +109,8 @@ class CreativeSettings:
     style_merge: str = "merge"  # merge | memo_wins | pick_first | pick_random
     target_duration_minutes: float = 4.5
     rhyme_scheme: str = "mixed"  # abab | aabb | mixed
-    # Second LLM pass to polish lyrics/hooks (extra cost; off by default).
-    multi_pass: bool = False
+    # Second LLM pass to polish lyrics/hooks (extra cost).
+    multi_pass: bool = True
     # Number of alternate chorus hooks (0 = only chorus_hook).
     chorus_variant_count: int = 3
 
@@ -140,6 +140,8 @@ class IdeaForgeConfig:
     whisper_beam_size: int = 1
     whisper_language: Optional[str] = None
     mode: str = "meeting"
+    # Meeting prompt domain pack: general | fed_grc
+    meeting_domain: str = "general"
     output_format: str = "both"  # md | json | both
     diarize: bool = False
     min_speakers: Optional[int] = None
@@ -209,7 +211,7 @@ class IdeaForgeConfig:
     creative_style_merge: str = "merge"
     creative_target_duration_minutes: float = 4.5
     creative_rhyme_scheme: str = "mixed"
-    creative_multi_pass: bool = False
+    creative_multi_pass: bool = True
     creative_chorus_variant_count: int = 3
     creative_suno_style_default: str = ""
     creative_suno_style_variations: List[str] = field(default_factory=list)
@@ -258,6 +260,8 @@ class IdeaForgeConfig:
         if "processing" in data:
             p = data["processing"]
             cfg.mode = p.get("mode", cfg.mode)
+            if "meeting_domain" in p:
+                cfg.meeting_domain = str(p["meeting_domain"]).strip().lower() or "general"
             cfg.output_format = p.get("output_format", cfg.output_format)
             cfg.diarize = p.get("diarize", cfg.diarize)
             cfg.min_file_size_bytes = p.get("min_file_size_bytes", cfg.min_file_size_bytes)

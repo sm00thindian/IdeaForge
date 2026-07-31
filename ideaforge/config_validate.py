@@ -56,6 +56,7 @@ SECTION_KEYS: Dict[str, Set[str]] = {
     },
     "processing": {
         "mode",
+        "meeting_domain",
         "output_format",
         "diarize",
         "min_file_size_bytes",
@@ -126,6 +127,7 @@ LLM_BACKENDS = {"auto", "ollama", "grok", "claude"}
 WHISPER_BACKENDS = {"auto", "mlx", "faster"}
 WHISPER_MODELS = {"tiny", "base", "small", "medium", "large-v3"}
 MODES = {"meeting", "creative", "auto"}
+MEETING_DOMAINS = {"general", "fed_grc"}
 OUTPUT_FORMATS = {"md", "json", "both"}
 
 
@@ -179,6 +181,11 @@ def validate_config_values(cfg: IdeaForgeConfig) -> List[str]:
         )
     if cfg.mode not in MODES:
         issues.append(f"invalid processing.mode '{cfg.mode}' (expected one of {sorted(MODES)})")
+    if cfg.meeting_domain not in MEETING_DOMAINS:
+        issues.append(
+            f"invalid processing.meeting_domain '{cfg.meeting_domain}' "
+            f"(expected one of {sorted(MEETING_DOMAINS)})"
+        )
     if cfg.output_format not in OUTPUT_FORMATS:
         issues.append(
             f"invalid processing.output_format '{cfg.output_format}' "

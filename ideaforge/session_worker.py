@@ -562,6 +562,7 @@ def _process_group_body(
                 creative_settings=cfg.creative_settings(),
                 suno_style=cfg.creative_suno_style(),
                 udio_style=cfg.creative_udio_style(),
+                meeting_domain=cfg.meeting_domain,
             )
             if reporter is not None:
                 reporter.mark_step_done(StepId.SUMMARIZE)

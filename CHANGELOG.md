@@ -4,6 +4,14 @@ All notable changes to IdeaForge are documented here. Format follows [Keep a Cha
 
 ## [Unreleased]
 
+### Added
+
+- **Meeting domain packs** — `processing.meeting_domain = general | fed_grc` (default general). Fed/GRC terminology is optional, not baked into every meeting prompt.
+
+### Changed
+
+- **Mature meeting markdown (Layer A)** — Exec skim order (snapshot → decisions → actions → risks → discussion); omit empty TBD headers; Participants table; SPEAKER_xx remapped to names; slim action table (no source quotes); footer metadata instead of header clutter.
+
 ### Fixed
 
 - **Song-idea routing** — Detect triggers after fillers (`yeah`, `um`, …) and speaker labels; also match “write a song” / similar near the start so ASR paraphrases still route to creative mode.

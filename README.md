@@ -75,6 +75,13 @@ USB recorder plugged in
 - **`creative`** — Force song-idea pipeline on every recording
 - **`auto`** (recommended) — Meeting notes by default; **keyword trigger** at the start of a recording routes to song-idea mode
 
+Meeting prompt domain (optional):
+
+```toml
+[processing]
+meeting_domain = "general"   # or "fed_grc" for OSCAL/Xacta/FedRAMP terminology pack
+```
+
 ### Song idea mode
 
 Say a trigger at the **start** of your voice memo (defaults include **"song idea"**, **"lyric idea"**, **"write a song"**). Leading fillers like “yeah” / “um” and speaker labels are ignored. IdeaForge routes after transcription and produces copy-ready **Suno v5.5** and **Udio** blocks — style prompt, lyrics, and paste sidecars (`*_suno.txt`, `*_udio.txt`).

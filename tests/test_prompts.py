@@ -20,10 +20,20 @@ def test_meeting_prompt_infers_names_instruction():
     assert "infer" in system.lower()
     assert "speaker_identities" in system.lower()
     assert "action_items" in user.lower() or "action item" in user.lower()
-    assert "Federal Reserve" in system
-    assert "OSCAL" in system
+    # General domain: no forced Fed/GRC framing
+    assert "Federal Reserve" not in system
     assert "discussion_topics" in user
     assert "preparation_notes" in user
+
+
+def test_meeting_domain_fed_grc_pack():
+    system, _ = build_prompt(
+        "meeting",
+        "We discussed the SSP and POA&M.",
+        meeting_domain="fed_grc",
+    )
+    assert "OSCAL" in system
+    assert "meeting scribe" in system.lower() or "executive assistant" in system.lower()
 
 
 def test_meeting_prompt_without_speakers():

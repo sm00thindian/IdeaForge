@@ -41,15 +41,26 @@ def test_meeting_notes_markdown():
         follow_ups=[FollowUp(topic="Capacity planning", owner="Alex", by_when="next sync")],
         risks_blockers=["Hiring delay on backend team"],
         preparation_notes=["[Unclear in transcript: exact launch date]"],
+        metadata={
+            "recording_date": "2026-06-27",
+            "recording_date_source": "filename",
+            "session_stem": "R2026-06-27-10-00-00",
+            "llm_backend": "grok",
+            "llm_model": "grok-4.3",
+        },
     )
     md = notes.to_markdown()
-    assert "# Meeting Minutes: Sprint Planning" in md
+    assert "# Planning · Sprint Planning" in md
     assert "Alex" in md
     assert "Delay launch to August" in md
-    assert "## Action Items" in md
+    assert "## Action items" in md
     assert "| 1 | Update roadmap | Alex |" in md
-    assert "Preparation Notes" in md
-    assert "**End of Minutes**" in md
+    assert "## Decisions" in md
+    assert "## Snapshot" in md
+    assert "Notes for author" in md
+    assert "End of Minutes" not in md
+    assert "**Time:** TBD" not in md
+    assert "Recording date:" in md
 
 
 def test_empty_action_items_message():
@@ -59,7 +70,53 @@ def test_empty_action_items_message():
         executive_summary="Quick alignment on priorities.",
     )
     md = notes.to_markdown()
-    assert "No explicit action items were captured in the transcript." in md
+    assert "No explicit action items captured" in md
+
+
+def test_meeting_markdown_replaces_speakers_and_omits_tbd():
+    notes = MeetingNotes(
+        title="Compliance Sync",
+        date="",
+        time="TBD",
+        platform="TBD",
+        attendees="See transcript for participants",
+        executive_summary="SPEAKER_00 asked SPEAKER_01 to update the RACI.",
+        speaker_identities=[
+            SpeakerIdentity(
+                speaker_id="SPEAKER_00",
+                inferred_name="Kilynn",
+                confidence="high",
+                rationale="self-intro",
+            ),
+            SpeakerIdentity(
+                speaker_id="SPEAKER_01",
+                inferred_name="Unknown participant",
+                confidence="unknown",
+            ),
+        ],
+        action_items=[
+            ActionItem(
+                who="SPEAKER_01",
+                what="Update RACI",
+                when="Friday",
+                notes="Short note",
+                source_quote="I'll update the RACI by Friday please",
+                priority="high",
+            )
+        ],
+        metadata={"recording_date": "2026-07-20", "recording_date_source": "filename"},
+    )
+    md = notes.to_markdown()
+    assert "SPEAKER_00" not in md.split("## Participants")[0]
+    assert "Kilynn" in md
+    assert "Participant" in md  # unknown identity
+    assert "**Time:** TBD" not in md
+    assert "**Platform:** TBD" not in md
+    assert "source quote" not in md.lower() or "I'll update" not in md.split("|")[0]
+    # Quote should not be in action table cells
+    assert "I'll update the RACI by Friday please" not in md
+    assert "## Participants" in md
+    assert "Recording date: 2026-07-20" in md
 
 
 def test_creative_output_json_roundtrip():
