@@ -4,6 +4,8 @@ All notable changes to IdeaForge are documented here. Format follows [Keep a Cha
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-07-31
+
 ### Added
 
 - **Meeting domain packs** — `processing.meeting_domain = auto | general | fed_grc` (default **auto**). Auto starts from general and switches to **fed_grc** when Federal Reserve / GRC / governance / systems-architecture language appears in the transcript.
@@ -245,8 +247,10 @@ All notable changes to IdeaForge are documented here. Format follows [Keep a Cha
 
 Prior releases were not changelogged in-repo. See git history for daemon, Grok/Claude/Ollama backends, faster-whisper + pyannote diarization, and USB ingest.
 
+[1.3.1]: https://github.com/sm00thindian/IdeaForge/releases/tag/v1.3.1
 [1.3.0]: https://github.com/sm00thindian/IdeaForge/releases/tag/v1.3.0
 [1.2.1]: https://github.com/sm00thindian/IdeaForge/releases/tag/v1.2.1
+
 [1.2.0]: https://github.com/sm00thindian/IdeaForge/releases/tag/v1.2.0
 [1.0.1]: https://github.com/sm00thindian/IdeaForge/releases/tag/v1.0.1
 [1.0.0]: https://github.com/sm00thindian/IdeaForge/releases/tag/v1.0.0
